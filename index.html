@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1020">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Music">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Live Music Player</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,Segoe UI,Roboto,sans-serif;background:#0f1020;color:#eee;min-height:100vh;display:flex;justify-content:center;padding:20px}
+.app{width:100%;max-width:760px}
+h1{font-size:22px;margin-bottom:14px}
+.card{background:#1b1c33;border-radius:14px;padding:16px;margin-bottom:14px}
+.now{display:flex;gap:14px;align-items:center}
+.disc{width:64px;height:64px;border-radius:50%;background:conic-gradient(#7c5cff,#ff5c9d,#7c5cff);flex:none}
+.disc.spin{animation:s 3s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+#title{font-weight:600;font-size:17px}
+#sub{font-size:13px;color:#9aa;margin-top:3px}
+canvas{width:100%;height:80px;display:block;margin:12px 0;background:#13142a;border-radius:8px}
+.ctrl{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+button{background:#7c5cff;border:0;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:14px}
+button.alt{background:#2b2d4f}
+button:hover{filter:brightness(1.15)}
+input[type=range]{accent-color:#7c5cff}
+#seek{width:100%;margin-top:8px}
+input[type=text],select{padding:9px;border-radius:8px;border:1px solid #2b2d4f;background:#13142a;color:#eee;font-size:14px}
+input[type=text]{flex:1;min-width:180px}
+h2{font-size:14px;color:#9aa;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em}
+.list{max-height:360px;overflow-y:auto}
+.list>div{padding:8px;border-radius:8px;cursor:pointer;display:flex;gap:10px;align-items:center;font-size:14px}
+.list>div:hover{background:#26284a}
+.list>div.active{background:#7c5cff33;color:#c9bbff}
+.list img,.ph{width:44px;height:44px;border-radius:6px;object-fit:cover;flex:none;background:#2b2d4f}
+.meta{flex:1;min-width:0}
+.meta b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.meta span,.tag{font-size:12px;color:#9aa}
+#status{font-size:12px;color:#9aa;margin-top:8px;min-height:16px}
+@media(max-width:480px){body{padding:10px}button{padding:12px 16px}.list{max-height:300px}}
+body{-webkit-tap-highlight-color:transparent;padding-bottom:max(20px,env(safe-area-inset-bottom))}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>🎵 Live Music Player</h1>
+
+  <div class="card">
+    <div class="now">
+      <div class="disc" id="disc"></div>
+      <div><div id="title">Belum ada lagu</div><div id="sub">Cari lagu, pilih radio, atau buka file musik</div></div>
+    </div>
+    <canvas id="viz" width="700" height="80"></canvas>
+    <div class="ctrl">
+      <button id="prev" class="alt">⏮</button>
+      <button id="play">▶ Play</button>
+      <button id="next" class="alt">⏭</button>
+      <span>🔊</span><input type="range" id="vol" min="0" max="1" step="0.01" value="0.8">
+    </div>
+    <input type="range" id="seek" value="0" min="0" max="100" step="0.1" style="display:none">
+    <div id="status"></div>
+  </div>
+
+  <div class="card">
+    <h2>🔍 Cari lagu</h2>
+    <div class="ctrl">
+      <input type="text" id="q" placeholder="Judul lagu / artis...">
+      <select id="srcSel">
+        <option value="all">Semua sumber</option>
+        <option value="itunes">iTunes (preview 30 dtk)</option>
+        <option value="audius">Audius (lagu penuh)</option>
+        <option value="archive">Internet Archive (lagu penuh)</option>
+      </select>
+      <button id="search">Cari</button>
+    </div>
+    <div class="list" id="results" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Radio Live (online)</h2>
+    <div class="list" id="radios"></div>
+    <div class="ctrl" style="margin-top:10px">
+      <input type="text" id="url" placeholder="Tempel URL stream sendiri (mp3/aac/ogg)...">
+      <button id="goUrl">Putar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>File lokal</h2>
+    <button id="pick" class="alt">📁 Buka file musik</button>
+    <input type="file" id="files" accept="audio/*" multiple hidden>
+    <div class="list" id="tracks" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const status = t => $("status").textContent = t;
+
+// ---------- Audio (2 elemen: stream/online & lokal untuk visualizer) ----------
+const A = {s:new Audio(), l:new Audio()};
+let audio = A.s, queue = [], qi = -1, mode = null;
+Object.values(A).forEach(a => {
+  a.preload = "none"; a.volume = 0.8;
+  const mine = () => a === audio;
+  a.onplaying = () => { if(!mine()) return; $("play").textContent="⏸ Pause"; $("disc").classList.add("spin"); status(mode==="stream"?"🔴 LIVE – sedang memutar":"Memutar..."); };
+  a.onpause = () => { if(!mine()) return; $("play").textContent="▶ Play"; $("disc").classList.remove("spin"); };
+  a.onwaiting = () => mine() && status("Buffering...");
+  a.onerror = () => mine() && status("Tidak bisa diputar (URL mati / diblokir / tidak ada internet).");
+  a.ontimeupdate = () => { if(mine() && isFinite(a.duration)) $("seek").value = a.currentTime/a.duration*100; };
+  a.onloadedmetadata = () => { if(mine()) $("seek").style.display = isFinite(a.duration) ? "block" : "none"; };
+  a.onended = () => { if(mine() && queue.length) step(1); };
+});
+function switchTo(a){ if(audio!==a){ audio.pause(); audio=a; } }
+
+function setInfo(t, s, art){
+  $("title").textContent = t; $("sub").textContent = s;
+  try { if("mediaSession" in navigator) navigator.mediaSession.metadata = new MediaMetadata({title:t, artist:s, artwork: art ? [{src:art}] : []}); } catch(e){}
+  $("disc").style.background = art ? `url("${art}") center/cover` : "";
+}
+function hilite(el){
+  document.querySelectorAll(".list>div").forEach(x => x.classList.remove("active"));
+  if(el) el.classList.add("active");
+}
+
+// ---------- Antrian (hasil pencarian / file lokal) ----------
+async function playItem(i, el){
+  const it = queue[i]; if(!it) return;
+  qi = i; mode = "queue";
+  hilite(el || (it.el)); setInfo(it.title, `${it.artist} · ${it.source}`, it.art);
+  let src = it.src;
+  if(!src){
+    status("Mencari file audio...");
+    try { src = it.src = await it.resolve(); } catch(e){ return status("Gagal: " + e.message); }
+  }
+  const a = it.local ? A.l : A.s;
+  switchTo(a);
+  if(it.local) initAnalyser();
+  a.src = src;
+  a.play().catch(e => status("Gagal memutar: " + e.message));
+}
+function step(d){ if(queue.length) playItem((qi + d + queue.length) % queue.length); }
+
+function renderList(box, items){
+  box.innerHTML = "";
+  items.forEach((it,i) => {
+    const d = document.createElement("div");
+    const img = it.art ? Object.assign(document.createElement("img"), {src: it.art, loading: "lazy"}) : Object.assign(document.createElement("div"), {className:"ph"});
+    const m = document.createElement("div"); m.className = "meta";
+    const b = document.createElement("b"); b.textContent = it.title;
+    const s = document.createElement("span"); s.textContent = `${it.artist} · ${it.source}`;
+    m.append(b, s); d.append(img, m);
+    d.onclick = () => { queue = items; playItem(i, d); };
+    it.el = d; box.appendChild(d);
+  });
+}
+
+// ---------- Pencarian ----------
+const enc = encodeURIComponent;
+const sources = {
+  itunes: async q => {
+    const j = await (await fetch(`https://itunes.apple.com/search?term=${enc(q)}&media=music&entity=song&limit=20`)).json();
+    return j.results.filter(x => x.previewUrl).map(x => ({title:x.trackName, artist:x.artistName, art:x.artworkUrl100, src:x.previewUrl, source:"iTunes 30dtk"}));
+  },
+  audius: async q => {
+    const j = await (await fetch(`https://api.audius.co/v1/tracks/search?query=${enc(q)}&app_name=MusicPlayer&limit=20`)).json();
+    return j.data.filter(x => x.is_streamable !== false).map(x => ({title:x.title, artist:x.user.name, art:x.artwork && x.artwork["150x150"], src:`https://api.audius.co/v1/tracks/${x.id}/stream?app_name=MusicPlayer`, source:"Audius"}));
+  },
+  archive: async q => {
+    const j = await (await fetch(`https://archive.org/advancedsearch.php?q=${enc("(" + q + ") AND mediatype:audio")}&fl[]=identifier&fl[]=title&fl[]=creator&rows=15&output=json`)).json();
+    return j.response.docs.map(x => ({
+      title:x.title, artist:[].concat(x.creator || "Internet Archive")[0], source:"Internet Archive",
+      art:`https://archive.org/services/img/${x.identifier}`,
+      resolve: async () => {
+        const m = await (await fetch(`https://archive.org/metadata/${x.identifier}`)).json();
+        const f = (m.files || []).find(f => /\.mp3$/i.test(f.name));
+        if(!f) throw new Error("tidak ada file MP3 di item ini");
+        return `https://archive.org/download/${x.identifier}/${encodeURI(f.name)}`;
+      }
+    }));
+  }
+};
+
+async function doSearch(){
+  const q = $("q").value.trim(); if(!q) return;
+  const sel = $("srcSel").value, names = sel==="all" ? Object.keys(sources) : [sel];
+  status("Mencari..."); $("results").innerHTML = "";
+  const res = await Promise.allSettled(names.map(n => sources[n](q)));
+  const items = [], fails = [];
+  res.forEach((r,i) => r.status==="fulfilled" ? items.push(...r.value) : fails.push(names[i]));
+  renderList($("results"), items);
+  status(`${items.length} hasil ditemukan` + (fails.length ? ` (gagal: ${fails.join(", ")})` : ""));
+}
+$("search").onclick = doSearch;
+$("q").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
+
+// ---------- Radio ----------
+const radios = [
+  {n:"SomaFM – Groove Salad", g:"Chillout", u:"https://ice1.somafm.com/groovesalad-128-mp3"},
+  {n:"SomaFM – Lush", g:"Vocal / Mellow", u:"https://ice1.somafm.com/lush-128-mp3"},
+  {n:"SomaFM – Secret Agent", g:"Lounge", u:"https://ice1.somafm.com/secretagent-128-mp3"},
+  {n:"SomaFM – Beat Blender", g:"Downtempo", u:"https://ice1.somafm.com/beatblender-128-mp3"},
+  {n:"Radio Paradise", g:"Eclectic Rock", u:"https://stream.radioparadise.com/mp3-128"},
+  {n:"Radio Paradise – Mellow", g:"Mellow Mix", u:"https://stream.radioparadise.com/mellow-128"}
+];
+radios.forEach(r => {
+  const d = document.createElement("div");
+  d.innerHTML = `<div class="meta"><b>${r.n}</b><span>${r.g}</span></div>`;
+  d.onclick = () => playStream(r.u, r.n, r.g, d);
+  $("radios").appendChild(d);
+});
+function playStream(url, name, sub, el){
+  mode = "stream"; queue = []; hilite(el); setInfo(name, sub || "Live stream");
+  switchTo(A.s); $("seek").style.display = "none";
+  A.s.src = url; status("Menghubungkan ke stream...");
+  A.s.play().catch(e => status("Gagal memutar: " + e.message));
+}
+$("goUrl").onclick = () => { const u = $("url").value.trim(); if(u) playStream(u, "Stream kustom", u, null); };
+
+// ---------- File lokal ----------
+const local = [];
+$("pick").onclick = () => $("files").click();
+$("files").onchange = e => {
+  [...e.target.files].forEach(f => local.push({title:f.name.replace(/\.[^.]+$/,""), artist:"File lokal", source:"Lokal", src:URL.createObjectURL(f), local:true}));
+  renderList($("tracks"), local);
+  queue = local; if(qi < 0 || mode !== "queue") playItem(0, $("tracks").children[0]);
+};
+
+// ---------- Kontrol ----------
+$("play").onclick = () => { if(!audio.src) return status("Pilih lagu atau stasiun dulu."); audio.paused ? audio.play() : audio.pause(); };
+$("next").onclick = () => step(1);
+$("prev").onclick = () => step(-1);
+$("vol").oninput = e => Object.values(A).forEach(a => a.volume = e.target.value);
+$("seek").oninput = e => { if(isFinite(audio.duration)) audio.currentTime = audio.duration * e.target.value/100; };
+
+// ---------- Visualizer ----------
+let ctx, analyser, data;
+function initAnalyser(){
+  if(IS_MOBILE) return; // di HP, Web Audio bisa menghentikan musik saat layar terkunci
+  if(ctx){ ctx.state==="suspended" && ctx.resume(); return; }
+  try {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const s = ctx.createMediaElementSource(A.l);
+    analyser = ctx.createAnalyser(); analyser.fftSize = 128;
+    s.connect(analyser); analyser.connect(ctx.destination);
+    data = new Uint8Array(analyser.frequencyBinCount);
+  } catch(e){ ctx = null; }
+}
+const cv = $("viz"), g = cv.getContext("2d");
+(function draw(){
+  requestAnimationFrame(draw);
+  g.clearRect(0,0,cv.width,cv.height);
+  const n = 48, w = cv.width/n, real = audio === A.l && analyser;
+  if(real) analyser.getByteFrequencyData(data);
+  for(let i=0;i<n;i++){
+    let v = audio.paused ? 3 : real ? data[i]/255*cv.height : (Math.sin(Date.now()/230+i*.5)*.5+.5)*cv.height*(.3+Math.random()*.5);
+    g.fillStyle = `hsl(${260+i*2},80%,65%)`;
+    g.fillRect(i*w+1, cv.height-v, w-3, v);
+  }
+})();
+
+// ---------- Mode HP: kontrol layar kunci + background play ----------
+const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+if("mediaSession" in navigator){
+  const ms = navigator.mediaSession, set = (n,f) => { try { ms.setActionHandler(n,f); } catch(e){} };
+  set("play", () => audio.play());
+  set("pause", () => audio.pause());
+  set("previoustrack", () => step(-1));
+  set("nexttrack", () => step(1));
+  set("seekto", d => { if(isFinite(audio.duration)) audio.currentTime = d.seekTime; });
+  Object.values(A).forEach(a => {
+    a.addEventListener("playing", () => { if(a===audio) ms.playbackState = "playing"; });
+    a.addEventListener("pause", () => { if(a===audio) ms.playbackState = "paused"; });
+    a.addEventListener("timeupdate", () => {
+      if(a===audio && isFinite(a.duration) && a.duration > 0) { try { ms.setPositionState({duration:a.duration, position:a.currentTime, playbackRate:a.playbackRate}); } catch(e){} }
+    });
+  });
+}
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
