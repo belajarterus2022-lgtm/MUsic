@@ -18,7 +18,7 @@
      Piped/Invidious (gratis tapi kadang lambat atau sedang mati).
 */
 window.APP_CONFIG = {
-  SUPABASE_URL: "",
-  SUPABASE_ANON_KEY: "",
+  SUPABASE_URL: "https://bzbnmchbirgpqpwtnlly.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_TS2kZxMtUCBZ5uiZRrsvqQ_fnTM9yha",
   YOUTUBE_API_KEY: ""
 };
