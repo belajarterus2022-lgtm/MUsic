@@ -579,22 +579,74 @@ async function ytSearch(q, st) {
   return ytKeylessSearch(q, st);
 }
 /* --- YouTube tanpa iklan: ambil aliran AUDIO lagunya (lewat Piped / Invidious), diputar oleh elemen <audio>.
-   Tidak ada pemutar video YouTube = tidak ada iklan, dan audio tetap jalan saat layar HP terkunci. --- */
-async function ytAudioSources(vid) {
-  const out = [], can = m => !m || !!Player.audio.canPlayType(String(m).split(";")[0]);
-  try {
-    const [d, h] = await tryHosts(PIPED, goodPiped, h => getJSON(`${h}/streams/${enc(vid)}`, { timeout: 8000 }));
-    goodPiped = h;
-    const a = (d.audioStreams || []).filter(x => x.url && !x.videoOnly && can(x.mimeType));
-    // m4a/AAC lebih dulu (didukung semua HP termasuk iPhone), lalu bitrate tertinggi
-    a.sort((x, y) => (/mp4|m4a/.test(y.mimeType || "") - /mp4|m4a/.test(x.mimeType || "")) || ((y.bitrate || 0) - (x.bitrate || 0)));
-    out.push(...a.slice(0, 2).map(x => x.url));
-  } catch { /* lanjut ke Invidious */ }
-  // Invidious: itag 140 = audio m4a 128 kbps, dialirkan lewat server Invidious (local=true)
-  const inv = goodInv ? [goodInv, ...INVID.filter(h => h !== goodInv)] : INVID;
-  inv.forEach(h => out.push(`${h}/latest_version?id=${enc(vid)}&itag=140&local=true`));
-  return [...new Set(out)];
-}
+   Tidak ada pemutar video YouTube = tidak ada iklan, dan audio tetap jalan saat layar HP terkunci.
+   Semua server dihubungi BERSAMAAN; server yang menjawab paling cepat langsung dipakai. --- */
+const YtAudio = {
+  cache: new Map(), bad: new Set(),
+  discovered: store.get("ytHosts:v2", null),
+  good: store.get("ytGood", {}),
+  canPlay(m) { return !m || !!Player.audio.canPlayType(String(m).split(";")[0]); },
+  m4aFirst(a, b, k) { return (/mp4|m4a/.test(b[k] || "") - /mp4|m4a/.test(a[k] || "")) || ((b.bitrate || 0) - (a.bitrate || 0)); },
+  // Daftar server yang sedang sehat, dari direktori resmi Piped & Invidious (disimpan 12 jam)
+  async discover() {
+    const d = this.discovered; if (d && Date.now() - d.t < 12 * 3600e3) return;
+    const [p, i] = await Promise.allSettled([
+      getJSON("https://piped-instances.kavin.rocks/", { timeout: 6000 }),
+      getJSON("https://api.invidious.io/instances.json?sort_by=health", { timeout: 6000 })]);
+    const piped = p.status === "fulfilled" && Array.isArray(p.value) ? p.value.map(x => x && x.api_url).filter(u => /^https:\/\//.test(u || "")) : [];
+    const inv = i.status === "fulfilled" && Array.isArray(i.value) ? i.value.map(x => x && x[1]).filter(x => x && x.type === "https" && x.api === true && x.cors !== false && x.uri).map(x => x.uri) : [];
+    if (piped.length || inv.length) { this.discovered = { t: Date.now(), piped: piped.slice(0, 12), inv: inv.slice(0, 12) }; store.set("ytHosts:v2", this.discovered); }
+  },
+  hosts(kind) {
+    const base = kind === "piped" ? PIPED : INVID, disc = (this.discovered && this.discovered[kind]) || [];
+    // urutan: server sendiri (config.js) → server yang terakhir berhasil → direktori → bawaan
+    const own = base.slice(0, ownHosts(kind === "piped" ? CFG.PIPED_INSTANCES : CFG.INVIDIOUS_INSTANCES).length);
+    return [...new Set([...own, this.good[kind], ...disc, ...base].filter(Boolean).map(h => String(h).replace(/\/+$/, "")))].slice(0, 8);
+  },
+  setGood(kind, h) { if (kind && h && this.good[kind] !== h) { this.good[kind] = h; store.set("ytGood", this.good); } },
+  get(vid) {
+    const c = this.cache.get(vid);
+    const usable = c && Date.now() - c.t < 45 * 60e3 && (c.pending > 0 || c.found.some(u => !this.bad.has(u)));
+    if (usable) return c;
+    const r = this.resolve(vid); this.cache.set(vid, r);
+    if (this.cache.size > 40) this.cache.delete(this.cache.keys().next().value);
+    return r;
+  },
+  drop(vid) { this.cache.delete(vid); },
+  resolve(vid) {
+    const r = { t: Date.now(), found: [], from: {}, pending: 0, waiters: [] };
+    const wake = () => r.waiters.splice(0).forEach(f => f());
+    const add = (urls, kind, h) => { urls.forEach(u => { if (u && !r.found.includes(u)) { r.found.push(u); r.from[u] = [kind, h]; } }); wake(); };
+    const job = p => { r.pending++; p.catch(() => { }).finally(() => { r.pending--; wake(); }); };
+    const ph = this.hosts("piped"), ih = this.hosts("inv");
+    // cadangan terakhir: alamat audio langsung Invidious (tanpa API) — dicoba begitu semua API menjawab gagal
+    let jp = 0;
+    const fallback = () => { if (r.fb) return; r.fb = true; if (!r.found.length) add([this.good.inv, ...ih].filter(Boolean).filter((h, k, a) => a.indexOf(h) === k).slice(0, 2).map(h => `${h}/latest_version?id=${enc(vid)}&itag=140&local=true`), "inv", null); };
+    const apiJob = p => { jp++; job(p.finally(() => { if (--jp === 0) fallback(); })); };
+    ph.forEach(h => apiJob(getJSON(`${h}/streams/${enc(vid)}`, { timeout: 7000 }).then(d => {
+      const a = (d.audioStreams || []).filter(x => x.url && !x.videoOnly && this.canPlay(x.mimeType)).sort((x, y) => this.m4aFirst(x, y, "mimeType"));
+      if (a.length) add(a.slice(0, 2).map(x => x.url), "piped", h);
+    })));
+    ih.forEach(h => apiJob(getJSON(`${h}/api/v1/videos/${enc(vid)}?local=true&fields=adaptiveFormats`, { timeout: 7000 }).then(d => {
+      const a = (d.adaptiveFormats || []).filter(x => x.url && /^audio\//.test(x.type || "") && this.canPlay(x.type))
+        .map(x => Object.assign({}, x, { url: x.url.startsWith("/") ? h + x.url : x.url }))
+        .filter(x => !/googlevideo\.com/.test(x.url)) // alamat langsung Google terkunci ke server: tidak bisa dipakai browser
+        .sort((x, y) => this.m4aFirst(x, y, "type"));
+      if (a.length) add(a.slice(0, 2).map(x => x.url), "inv", h);
+    })));
+    job(new Promise(f => setTimeout(f, 7500)).then(fallback)); // pengaman bila ada server yang tidak menjawab sama sekali
+    return r;
+  },
+  // sumber berikutnya yang belum dicoba; menunggu bila server masih menjawab
+  async next(r, tried) {
+    for (; ;) {
+      const u = r.found.find(x => !tried.has(x) && !this.bad.has(x));
+      if (u) return u;
+      if (r.pending === 0) return null;
+      await new Promise(f => r.waiters.push(f));
+    }
+  }
+};
 async function ytFindOne(q) {
   const r = await ytSearch(q, {});
   const best = r.items.sort((a, b) => score(b, q) - score(a, q))[0];
@@ -1012,7 +1064,7 @@ const Player = {
   engine: null, audio: new Audio(), yt: null, ytReady: false, pendingVid: null, sc: null, scPos: 0, scDur: 0, scT: 0,
   list: [], i: -1, cur: null, tok: 0, playing: false, errRun: 0,
   vol: store.get("vol", 80), muted: false, shuffle: store.get("shuffle", false), repeat: store.get("repeat", "off"), seeking: false,
-  adFree: store.get("ytAdFree", true), ytSrcs: [], ytSrcI: 0, ytT: 0, ytStarted: false, resumeAt: 0,
+  adFree: store.get("ytAdFree", true), ytRes: null, ytTried: new Set(), ytCur: "", ytT: 0, ytStarted: false, resumeAt: 0, shufNext: null,
 
   initYT() {
     if (window.YT && YT.Player) return this.makeYT();
@@ -1078,7 +1130,7 @@ const Player = {
     this.scT = setTimeout(() => { if (live() && !this.playing) status("Jika belum terdengar, tekan tombol putar di pemutar SoundCloud.", 6000); }, 12000);
   },
   playList(list, i) {
-    this.list = list.slice();
+    this.list = list.slice(); this.shufNext = null;
     this.order = null;
     this.playAt(i);
   },
@@ -1108,10 +1160,11 @@ const Player = {
       }
       if (it.kind === "yt") {
         if (this.adFree) {
-          status("Memuat audio tanpa iklan…");
-          const srcs = await ytAudioSources(it.vid);
-          if (tk !== this.tok) return;
-          if (srcs.length) { this.ytSrcs = srcs; this.ytSrcI = -1; this.ytStarted = false; this.use("audio"); this.ytNextSrc(tk); return; }
+          // Tanpa iklan: HANYA audio. Tidak pernah jatuh ke pemutar YouTube yang menayangkan iklan.
+          this.ytRes = YtAudio.get(it.vid); this.ytTried = new Set(); this.ytCur = ""; this.ytStarted = false;
+          this.ytEver = false; this.ytDeadline = Date.now() + 12000; // maks. 12 detik menunggu suara pertama
+          this.use("audio"); this.ytNextSrc(tk);
+          return;
         }
         this.playYtOfficial(it);
         return;
@@ -1126,22 +1179,43 @@ const Player = {
       this.onError("Gagal memutar: " + (e && e.message ? e.message : "sumber tidak merespons"));
     }
   },
-  // Coba sumber audio YouTube berikutnya; bila semua gagal, pakai pemutar resmi YouTube (dengan iklan).
-  ytNextSrc(tk = this.tok) {
-    if (tk !== this.tok || !this.cur || this.cur.kind !== "yt") return;
+  // Putar sumber audio YouTube berikutnya yang tersedia (server tercepat lebih dulu).
+  async ytNextSrc(tk = this.tok) {
+    if (tk !== this.tok || !this.cur || this.cur.kind !== "yt" || !this.ytRes) return;
     clearTimeout(this.ytT);
     const pos = this.ytStarted ? (this.audio.currentTime || 0) : this.resumeAt;
     this.ytStarted = false; // sumber berikutnya belum berjalan: posisi disimpan di resumeAt sampai berhasil
-    this.ytSrcI++;
-    if (this.ytSrcI >= this.ytSrcs.length) {
-      status("Audio tanpa iklan sedang tidak tersedia untuk lagu ini. Diputar lewat pemutar YouTube.", 6000);
-      this.resumeAt = pos; this.playYtOfficial(this.cur); return;
+    if (this.ytCur) { YtAudio.bad.add(this.ytCur); this.ytTried.add(this.ytCur); }
+    const ready = this.ytRes.found.some(u => !this.ytTried.has(u) && !YtAudio.bad.has(u));
+    if (!ready) { if (!this.audio.paused) this.audio.pause(); status("Menyiapkan audio tanpa iklan…"); }
+    const late = () => !this.ytEver && Date.now() > this.ytDeadline;
+    const vid = this.cur.vid, url = late() ? null : await YtAudio.next(this.ytRes, this.ytTried);
+    if (tk !== this.tok) return;
+    if (!url || late()) {
+      YtAudio.drop(vid); this.ytCur = "";
+      return this.onError(this.list.length > 1 ? "Lagu ini sedang tidak bisa diputar tanpa iklan."
+        : "Lagu ini sedang tidak bisa diputar tanpa iklan. Matikan “Tanpa iklan” bila ingin memutarnya lewat YouTube (ada iklan).");
     }
+    this.ytCur = url; this.ytTried.add(url);
     this.resumeAt = pos > 1 ? pos : 0;
-    this.audio.src = this.ytSrcs[this.ytSrcI];
+    this.audio.src = url;
     this.audio.play().catch(e => { if (e && e.name === "NotAllowedError" && tk === this.tok) { this.setPlaying(false); status("Tekan tombol putar untuk mulai.", 4000); } });
-    // server yang tidak merespons dalam 12 detik dilewati
-    this.ytT = setTimeout(() => { if (tk === this.tok && this.engine === "audio" && !this.ytStarted && !this.audio.paused) this.ytNextSrc(tk); }, 12000);
+    // sumber yang tidak mulai berbunyi dalam 8 detik dilewati
+    this.ytT = setTimeout(() => { if (tk === this.tok && this.engine === "audio" && !this.ytStarted && !this.audio.paused) this.ytNextSrc(tk); }, 8000);
+  },
+  // Siapkan lagu berikutnya lebih dulu agar perpindahan lagu instan (juga saat layar terkunci)
+  peekNext() {
+    const n = this.list.length; if (n < 2) return -1;
+    if (this.shuffle) {
+      if (this.shufNext == null || this.shufNext === this.i || this.shufNext >= n) { let j; do j = Math.floor(Math.random() * n); while (j === this.i); this.shufNext = j; }
+      return this.shufNext;
+    }
+    const j = this.i + 1; return j < n ? j : (this.repeat === "off" ? -1 : 0);
+  },
+  prefetchNext() {
+    if (!this.adFree) return;
+    const it = this.list[this.peekNext()];
+    if (it && it.kind === "yt" && it !== this.cur) YtAudio.get(it.vid);
   },
   playYtOfficial(it) {
     const start = this.resumeAt || 0; this.resumeAt = 0;
@@ -1160,7 +1234,13 @@ const Player = {
     this.use("audio"); this.audio.src = st.url; status("Menghubungkan ke " + st.name + "…");
     this.audio.play().catch(e => { if (e && e.name === "NotAllowedError") { this.setPlaying(false); status("Tekan tombol putar untuk mulai.", 4000); } });
   },
-  onPlaying() { this.errRun = 0; this.setPlaying(true); status(""); if (this.engine === "audio" && this.cur && this.cur.kind === "yt") { this.ytStarted = true; clearTimeout(this.ytT); } if (this.cur && this.cur._hid) History.markOk(this.cur._hid); },
+  onPlaying() {
+    this.errRun = 0; this.setPlaying(true); status("");
+    if (this.engine === "audio" && this.cur && this.cur.kind === "yt") {
+      this.ytStarted = true; this.ytEver = true; clearTimeout(this.ytT);
+      const f = this.ytRes && this.ytRes.from[this.ytCur]; if (f) YtAudio.setGood(f[0], f[1]); // ingat server tercepat
+    }
+    this.prefetchNext(); if (this.cur && this.cur._hid) History.markOk(this.cur._hid); },
   setPlaying(on) {
     this.playing = on;
     $("#playIco").setAttribute("href", on ? "#i-pause" : "#i-play");
@@ -1183,7 +1263,10 @@ const Player = {
   },
   nextIndex(dir, auto) {
     const n = this.list.length; if (!n) return -1;
-    if (this.shuffle && n > 1 && dir > 0) { let j; do j = Math.floor(Math.random() * n); while (j === this.i); return j; }
+    if (this.shuffle && n > 1 && dir > 0) {
+      if (this.shufNext != null && this.shufNext !== this.i && this.shufNext < n) { const j = this.shufNext; this.shufNext = null; return j; } // yang sudah disiapkan
+      let j; do j = Math.floor(Math.random() * n); while (j === this.i); return j;
+    }
     let j = this.i + dir;
     if (j >= n) { if (auto && this.repeat === "off") return -1; j = 0; }
     if (j < 0) j = n - 1;
@@ -1228,6 +1311,10 @@ const Player = {
   stop() { this.tok++; this.pause(); this.use(null); this.cur = null; this.list = []; this.setPlaying(false); }
 };
 const A = Player.audio; A.preload = "none";
+// Elemen audio dipasang di halaman (beberapa browser HP lebih andal memutar di latar belakang),
+// dan sesi audio iPhone diset "playback" agar tetap berbunyi saat layar terkunci.
+A.setAttribute("playsinline", ""); A.hidden = true; document.body.append(A);
+try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch { }
 A.addEventListener("playing", () => Player.engine === "audio" && Player.onPlaying());
 A.addEventListener("pause", () => Player.engine === "audio" && Player.setPlaying(false));
 A.addEventListener("waiting", () => Player.engine === "audio" && status("Memuat…"));
@@ -1316,6 +1403,8 @@ if ("mediaSession" in navigator) {
   set("play", () => Player.resume()); set("pause", () => Player.pause());
   set("previoustrack", () => Player.prev()); set("nexttrack", () => Player.next());
   set("seekto", d => Player.seek(d.seekTime));
+  set("seekbackward", d => { const [c] = Player.time(); Player.seek(Math.max(0, c - ((d && d.seekOffset) || 10))); });
+  set("seekforward", d => { const [c, du] = Player.time(); Player.seek(Math.min(du || c + 10, c + ((d && d.seekOffset) || 10))); });
 }
 
 /* =====================================================================
@@ -1518,6 +1607,7 @@ document.addEventListener("securitypolicyviolation", e => {
    MULAI
 ===================================================================== */
 Player.applyVol();
-Player.initYT();
+if (!Player.adFree) Player.initYT(); // pemutar resmi YouTube hanya dimuat bila "Tanpa iklan" dimatikan
+YtAudio.discover().catch(() => { });
 initAuth();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { });
