@@ -3,408 +3,248 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0f1020">
+<meta name="theme-color" content="#121826">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Music">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
 <title>Live Music Player</title>
-<style>
-:root{--bg:#0b0b14;--card:#14141f;--card2:#1d1d2c;--line:#2a2a3d;--ac:#8b5cf6;--ac2:#3b82f6;--mut:#9aa0b4}
-*{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
-body{font-family:Inter,system-ui,Segoe UI,Roboto,sans-serif;background:radial-gradient(1000px 500px at 80% -10%,#2a1b5a55,transparent),var(--bg);color:#eceef6;min-height:100vh;-webkit-tap-highlight-color:transparent;padding-bottom:max(24px,env(safe-area-inset-bottom))}
-header{position:sticky;top:0;z-index:5;background:#0b0b14cc;backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:12px 20px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
-h1{font-size:18px;background:linear-gradient(90deg,var(--ac),var(--ac2));-webkit-background-clip:text;background-clip:text;color:transparent}
-nav{display:flex;gap:4px;margin-left:auto}
-nav a{color:var(--mut);text-decoration:none;font-size:13px;padding:6px 12px;border-radius:99px;transition:.2s}
-nav a:hover{background:var(--card2);color:#fff}
-.app{max-width:1000px;margin:0 auto;padding:20px;display:grid;gap:16px;grid-template-columns:1fr}
-@media(min-width:900px){.app{grid-template-columns:340px 1fr;align-items:start}.player{position:sticky;top:70px}.wide{grid-column:2}}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
-.now{display:flex;gap:14px;align-items:center}
-.disc{width:72px;height:72px;border-radius:16px;background:linear-gradient(135deg,var(--ac),var(--ac2));flex:none;box-shadow:0 6px 24px #8b5cf655}
-.disc.spin{animation:pulse 2.4s ease-in-out infinite}
-@keyframes pulse{50%{transform:scale(1.05)}}
-#title{font-weight:600;font-size:16px}
-#sub{font-size:13px;color:var(--mut);margin-top:3px}
-canvas{width:100%;height:70px;display:block;margin:14px 0;background:#0e0e18;border-radius:10px}
-.ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-button{background:linear-gradient(135deg,var(--ac),var(--ac2));border:0;color:#fff;padding:9px 16px;border-radius:10px;cursor:pointer;font-size:14px;transition:.15s}
-button.alt{background:var(--card2);border:1px solid var(--line)}
-button:hover{filter:brightness(1.18)}button:active{transform:scale(.96)}
-input[type=range]{accent-color:var(--ac)}
-#seek{width:100%;margin-top:10px}
-input[type=text],select{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0e0e18;color:#eee;font-size:14px;max-width:100%}
-input[type=text]:focus,select:focus{outline:2px solid var(--ac);border-color:transparent}
-input[type=text]{flex:1;min-width:150px}
-h2{font-size:12px;color:var(--mut);margin-bottom:12px;text-transform:uppercase;letter-spacing:.08em}
-.list{max-height:420px;overflow-y:auto}
-.list>div{padding:8px;border-radius:10px;cursor:pointer;display:flex;gap:10px;align-items:center;font-size:14px;transition:.15s}
-.list>div:hover{background:var(--card2)}
-.list>div.active{background:#8b5cf626;color:#d6c9ff}
-.list img,.ph{width:46px;height:46px;border-radius:8px;object-fit:cover;flex:none;background:var(--card2)}
-.meta{flex:1;min-width:0}
-.meta b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
-.meta span,.tag{font-size:12px;color:var(--mut)}
-#status{font-size:12px;color:var(--mut);margin-top:8px;min-height:16px;flex:1}
-.badge{font-size:10px;padding:2px 7px;border-radius:99px;background:var(--card2);color:#c9bbff;margin-left:6px;white-space:nowrap}
-.badge.full{background:#14392b;color:#7ee8b3}
-.mini{padding:6px 10px;font-size:13px;background:var(--card2);border:1px solid var(--line);flex:none}
-.mini.on{background:#ec4899;border-color:#ec4899}
-#time{font-size:12px;color:var(--mut);margin-left:auto}
-#more{width:100%;margin-top:8px}
-@media(max-width:480px){.app{padding:12px}button{padding:11px 14px}.list{max-height:320px}nav a{padding:6px 8px}}
-</style>
 </head>
 <body>
-<header><h1>🎵 Live Music Player</h1><nav><a href="#cari">Cari</a><a href="#favorit">Favorit</a><a href="#radio">Radio</a></nav></header>
-<div class="app">
-  <div class="card player">
-    <div class="now"><div class="disc" id="disc"></div>
-      <div><div id="title">Belum ada lagu</div><div id="sub">Cari lagu, pilih radio, atau buka file musik</div></div></div>
-    <canvas id="viz" width="700" height="80"></canvas>
-    <div class="ctrl"><button id="prev" class="alt">⏮</button><button id="play">▶ Play</button><button id="next" class="alt">⏭</button>
-      <span>🔊</span><input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" style="flex:1;min-width:70px"></div>
-    <input type="range" id="seek" value="0" min="0" max="100" step="0.1" style="display:none">
-    <div class="ctrl"><div id="status"></div><span id="time"></span></div>
-  </div>
 
-  <div class="card wide" id="cari">
-    <h2>🔍 Cari lagu</h2>
-    <div class="ctrl">
-      <input type="text" id="q" list="sug" autocomplete="off" placeholder="Judul, artis, band, album, genre...">
-      <datalist id="sug"></datalist>
-      <select id="srcSel"><option value="all">Semua sumber</option><option value="itunes">iTunes (hanya preview 30 dtk)</option><option value="audius">Audius (lagu penuh)</option><option value="archive">Internet Archive (lagu penuh)</option></select>
-      <button id="search">Cari</button>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19.1 4.9a10 10 0 0 1 0 14.2M4.9 19.1a10 10 0 0 1 0-14.2"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4.5" width="4" height="15" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="4.5" width="4" height="15" rx="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M19 19.5 9 12l10-7.5z" fill="currentColor"/><path d="M5 19V5"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="m5 4.5 10 7.5-10 7.5z" fill="currentColor"/><path d="M19 5v14"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="19" cy="12" r="1.4" fill="currentColor"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-vol" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></symbol>
+    <symbol id="i-lyrics" viewBox="0 0 24 24"><path d="M4 6h16M4 12h11M4 18h7"/><circle cx="18" cy="18" r="2"/><path d="M20 18v-6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></symbol>
+    <symbol id="i-repeat" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
+    <symbol id="i-queue" viewBox="0 0 24 24"><path d="M3 6h13M3 12h13M3 18h8M18 15v6M15 18h6"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
+    <symbol id="i-move" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m11 10 3 3-3 3M8 13h6"/></symbol>
+  </defs>
+</svg>
+
+<div id="boot" class="boot"><span class="boot-dot"></span>Memuat…</div>
+
+<!-- ============ SETUP (config.js belum diisi) ============ -->
+<section id="setup" class="gate" hidden>
+  <div class="gate-card wide">
+    <div class="brand"><span class="brand-mark"></span>Live Music</div>
+    <h1>Hubungkan database dulu</h1>
+    <p class="lead">Login dan favorit butuh database. Isi <code>config.js</code> di repo Anda dengan alamat dan kunci Supabase, lalu muat ulang halaman ini.</p>
+    <ol class="steps">
+      <li>Buat proyek gratis di <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a>.</li>
+      <li>Buka <b>SQL Editor</b>, tempel isi <code>supabase-setup.sql</code>, lalu tekan <b>Run</b>.</li>
+      <li>Salin <b>Project URL</b> dan <b>anon public key</b> dari <b>Project Settings → API</b> ke <code>config.js</code>.</li>
+      <li>Di <b>Authentication → URL Configuration</b>, isi <b>Site URL</b> dengan alamat situs ini.</li>
+    </ol>
+    <p class="hint" id="setupUrl"></p>
+  </div>
+</section>
+
+<!-- ============ LOGIN / DAFTAR ============ -->
+<section id="auth" class="gate" hidden>
+  <div class="gate-card">
+    <div class="brand"><span class="brand-mark"></span>Live Music</div>
+    <h1 id="authTitle">Masuk</h1>
+    <p class="lead" id="authLead"></p>
+    <div class="seg" role="group" aria-label="Pilih masuk atau daftar">
+      <button type="button" data-mode="login">Masuk</button>
+      <button type="button" data-mode="register">Daftar</button>
     </div>
-    <div id="count" class="tag" style="margin-top:10px"></div>
-    <div class="list" id="results" style="margin-top:6px"></div>
-    <button id="more" class="alt" style="display:none">Muat lebih banyak</button>
+    <form id="authForm" novalidate>
+      <label class="field" data-show="register"><span>Nama</span><input name="name" autocomplete="name" maxlength="40" placeholder="Nama panggilan"></label>
+      <label class="field" data-show="login register forgot"><span>Email</span><input name="email" type="email" autocomplete="email" inputmode="email" placeholder="nama@email.com"></label>
+      <label class="field" data-show="login register reset"><span>Password</span><input name="password" type="password" autocomplete="current-password" placeholder="Minimal 6 karakter"></label>
+      <p class="form-msg" id="authMsg" role="status" aria-live="polite"></p>
+      <button class="btn primary block" id="authSubmit" type="submit">Masuk</button>
+      <div class="form-links">
+        <button type="button" class="link" id="forgotLink" data-show="login">Lupa password?</button>
+        <button type="button" class="link" id="backLogin" data-show="forgot reset">Kembali ke halaman masuk</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- ============ APLIKASI ============ -->
+<div id="app" hidden>
+  <header class="top">
+    <div class="top-in">
+      <div class="brand"><span class="brand-mark"></span>Live Music</div>
+      <button class="acct" id="acctBtn" aria-haspopup="true"><span class="avatar" id="avatar">?</span><span class="acct-name" id="acctName"></span><svg class="i sm"><use href="#i-down"/></svg></button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <nav class="side" aria-label="Menu">
+      <button data-tab="search"><svg class="i"><use href="#i-search"/></svg>Cari lagu</button>
+      <button data-tab="radio"><svg class="i"><use href="#i-radio"/></svg>Radio</button>
+      <button data-tab="favs"><svg class="i"><use href="#i-heart"/></svg>Favorit</button>
+      <button data-tab="local"><svg class="i"><use href="#i-file"/></svg>File lokal</button>
+    </nav>
+
+    <main class="main">
+      <!-- CARI -->
+      <section class="view" data-view="search">
+        <h1 class="view-title">Cari lagu</h1>
+        <form class="searchbox" id="searchForm" role="search">
+          <svg class="i"><use href="#i-search"/></svg>
+          <input id="q" type="search" list="sug" autocomplete="off" enterkeyhint="search" placeholder="Judul, penyanyi, band, atau tahun">
+          <datalist id="sug"></datalist>
+          <button class="btn primary" type="submit">Cari</button>
+        </form>
+        <div class="seg small" id="srcSeg" role="group" aria-label="Sumber lagu">
+          <button type="button" data-src="all" aria-pressed="true">Semua sumber</button>
+          <button type="button" data-src="youtube">YouTube</button>
+          <button type="button" data-src="audius">Audius</button>
+          <button type="button" data-src="archive">Internet Archive</button>
+        </div>
+        <p class="count" id="count"></p>
+        <div class="list" id="results"></div>
+        <div class="empty" id="searchEmpty">
+          <p>Ketik nama lagu, penyanyi, band, atau tahun. Semua hasil adalah lagu penuh.</p>
+          <div class="chips" id="tryChips"></div>
+        </div>
+        <button class="btn ghost block" id="more" hidden>Muat lebih banyak</button>
+      </section>
+
+      <!-- RADIO -->
+      <section class="view" data-view="radio" hidden>
+        <h1 class="view-title">Radio Indonesia</h1>
+        <div class="radio-tools">
+          <div class="searchbox slim"><svg class="i"><use href="#i-search"/></svg><input id="rq" type="search" placeholder="Nama stasiun atau kota"></div>
+          <select id="rProv" aria-label="Provinsi"><option value="">Semua daerah</option></select>
+        </div>
+        <div class="chips scroll" id="rCats"></div>
+        <p class="count" id="rCount"></p>
+        <div class="list" id="rList"></div>
+        <details class="custom-url">
+          <summary>Putar dari alamat stream sendiri</summary>
+          <form id="urlForm" class="searchbox slim"><svg class="i"><use href="#i-link"/></svg><input id="url" type="url" placeholder="https://…/stream.mp3"><button class="btn ghost" type="submit">Putar</button></form>
+        </details>
+      </section>
+
+      <!-- FAVORIT -->
+      <section class="view" data-view="favs" hidden>
+        <h1 class="view-title">Favorit</h1>
+        <div id="importBox" class="notice" hidden></div>
+        <div class="folder-bar">
+          <div class="chips scroll" id="folderChips"></div>
+          <button class="btn ghost icon-btn" id="fNew" title="Folder baru" aria-label="Folder baru"><svg class="i"><use href="#i-plus"/></svg></button>
+        </div>
+        <div class="folder-head">
+          <div><h2 id="fName"></h2><p class="count" id="fCount"></p></div>
+          <div class="folder-actions">
+            <button class="btn primary" id="fPlay"><svg class="i"><use href="#i-play"/></svg>Putar</button>
+            <button class="btn ghost" id="fShuffle"><svg class="i"><use href="#i-shuffle"/></svg>Acak</button>
+            <button class="btn ghost icon-btn" id="fMenu" aria-label="Kelola folder"><svg class="i"><use href="#i-more"/></svg></button>
+          </div>
+        </div>
+        <div class="list" id="favs"></div>
+      </section>
+
+      <!-- LOKAL -->
+      <section class="view" data-view="local" hidden>
+        <h1 class="view-title">File lokal</h1>
+        <p class="muted">Putar file musik dari perangkat ini. File tidak diunggah ke mana pun dan tidak ikut tersimpan di akun.</p>
+        <button class="btn ghost" id="pick"><svg class="i"><use href="#i-file"/></svg>Pilih file musik</button>
+        <input type="file" id="files" accept="audio/*" multiple hidden>
+        <div class="list" id="tracks"></div>
+      </section>
+    </main>
+
+    <!-- SEDANG DIPUTAR + LIRIK -->
+    <aside class="now" id="now" aria-label="Sedang diputar">
+      <div class="now-top">
+        <span>Sedang diputar</span>
+        <button class="icon-btn plain" id="nowClose" aria-label="Tutup"><svg class="i"><use href="#i-down"/></svg></button>
+      </div>
+      <div class="stage">
+        <div class="cover" id="cover"><svg class="i xl"><use href="#i-music"/></svg></div>
+        <div class="yt-wrap off" id="ytWrap">
+          <div id="yt"></div>
+          <button class="pip-open" id="pipOpen" aria-label="Buka layar sedang diputar"><svg class="i sm"><use href="#i-expand"/></svg></button>
+        </div>
+      </div>
+      <div class="now-meta">
+        <div class="now-text"><h2 id="nTitle">Belum ada lagu</h2><p id="nArtist">Pilih lagu atau stasiun radio</p></div>
+        <button class="icon-btn plain heart" id="nHeart" aria-label="Simpan ke favorit" hidden><svg class="i"><use href="#i-heart"/></svg></button>
+      </div>
+      <div class="now-modes">
+        <button class="mode" id="shuffleBtn" aria-pressed="false"><svg class="i sm"><use href="#i-shuffle"/></svg>Acak</button>
+        <button class="mode" id="repeatBtn" aria-pressed="false"><svg class="i sm"><use href="#i-repeat"/></svg><span id="repeatLbl">Ulangi: mati</span></button>
+      </div>
+      <section class="lyrics">
+        <div class="lyrics-head"><h3>Lirik</h3><span id="lySrc"></span></div>
+        <div class="ly-body" id="lyBody"><p class="ly-msg">Lirik muncul di sini saat lagu diputar.</p></div>
+      </section>
+    </aside>
   </div>
 
-  <div class="card wide" id="favorit">
-    <h2>♥ Favorit</h2>
-    <div class="ctrl"><select id="folderSel" style="flex:1"></select>
-      <button class="alt" id="fNew">＋ Folder</button><button class="alt" id="fRen">✎ Ubah nama</button><button class="alt" id="fDel">🗑 Hapus</button></div>
-    <div class="tag" style="margin:8px 0">Tombol ♥ pada lagu menyimpan ke folder yang sedang dipilih. Data tersimpan di browser perangkat ini saja.</div>
-    <div class="list" id="favs"></div>
-  </div>
+  <!-- BAR PEMUTAR -->
+  <footer class="bar" id="bar">
+    <input type="range" id="seek" class="seek" min="0" max="1000" value="0" aria-label="Posisi lagu">
+    <div class="bar-in">
+      <button class="bar-track" id="barTrack" aria-label="Buka layar sedang diputar">
+        <span class="bar-art" id="barArt"><svg class="i"><use href="#i-music"/></svg></span>
+        <span class="bar-text"><b id="bTitle">Belum ada lagu</b><span id="bArtist">Live Music</span></span>
+      </button>
+      <div class="bar-ctrl">
+        <button class="icon-btn plain hide-sm" id="prev" aria-label="Sebelumnya"><svg class="i"><use href="#i-prev"/></svg></button>
+        <button class="play" id="play" aria-label="Putar"><svg class="i"><use href="#i-play" id="playIco"/></svg></button>
+        <button class="icon-btn plain" id="next" aria-label="Berikutnya"><svg class="i"><use href="#i-next"/></svg></button>
+        <span class="time hide-sm" id="time"></span>
+      </div>
+      <div class="bar-extra">
+        <span class="live" id="liveTag" hidden>Live</span>
+        <button class="icon-btn plain heart hide-sm" id="bHeart" aria-label="Simpan ke favorit" hidden><svg class="i"><use href="#i-heart"/></svg></button>
+        <button class="icon-btn plain hide-sm" id="mute" aria-label="Bisukan"><svg class="i"><use href="#i-vol" id="volIco"/></svg></button>
+        <input type="range" id="vol" class="vol hide-sm" min="0" max="100" value="80" aria-label="Volume">
+        <button class="icon-btn plain show-sm" id="lyBtn" aria-label="Lirik"><svg class="i"><use href="#i-lyrics"/></svg></button>
+      </div>
+    </div>
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+  </footer>
 
-  <div class="card wide">
-    <h2>File lokal</h2>
-    <button id="pick" class="alt">📁 Buka file musik</button><input type="file" id="files" accept="audio/*" multiple hidden>
-    <div class="list" id="tracks" style="margin-top:8px"></div>
-  </div>
-
-  <div class="card wide" id="radio">
-    <h2>📻 Radio Online Indonesia</h2>
-    <div class="ctrl"><input type="text" id="rq" placeholder="Cari nama stasiun / kota...">
-      <select id="radioSel" style="flex:2;min-width:200px"></select>
-      <button id="radioGo">▶ Putar</button><button id="radioStop" class="alt">⏹</button></div>
-    <div id="radioInfo" class="tag" style="margin-top:8px"></div>
-    <div class="ctrl" style="margin-top:12px"><input type="text" id="url" placeholder="Atau tempel URL stream sendiri (mp3/aac/ogg)..."><button id="goUrl" class="alt">Putar</button></div>
-  </div>
+  <nav class="tabs" aria-label="Menu">
+    <button data-tab="search"><svg class="i"><use href="#i-search"/></svg>Cari</button>
+    <button data-tab="radio"><svg class="i"><use href="#i-radio"/></svg>Radio</button>
+    <button data-tab="favs"><svg class="i"><use href="#i-heart"/></svg>Favorit</button>
+    <button data-tab="local"><svg class="i"><use href="#i-file"/></svg>Lokal</button>
+  </nav>
 </div>
 
-<script>
-const $ = id => document.getElementById(id);
-const fmt = x => isFinite(x) ? Math.floor(x/60)+":"+String(Math.floor(x%60)).padStart(2,"0") : "–";
-const status = t => $("status").textContent = t;
+<dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-// ---------- Audio (2 elemen: stream/online & lokal untuk visualizer) ----------
-const A = {s:new Audio(), l:new Audio(), r:new Audio()};
-let audio = A.s, queue = [], qi = -1, mode = null;
-Object.values(A).forEach(a => {
-  a.preload = "none"; a.volume = 0.8;
-  const mine = () => a === audio;
-  a.onplaying = () => { if(!mine()) return; $("play").textContent="⏸ Pause"; $("disc").classList.add("spin"); status(mode==="stream"?"🔴 LIVE – sedang memutar":"Memutar..."); };
-  a.onpause = () => { if(!mine()) return; $("play").textContent="▶ Play"; $("disc").classList.remove("spin"); };
-  a.onwaiting = () => mine() && status("Buffering...");
-  a.onerror = () => mine() && status("Tidak bisa diputar (URL mati / diblokir / tidak ada internet).");
-  a.ontimeupdate = () => { if(!mine()) return; if(isFinite(a.duration)){ $("seek").value = a.currentTime/a.duration*100; $("time").textContent = fmt(a.currentTime)+" / "+fmt(a.duration); } else $("time").textContent = ""; };
-  a.onloadedmetadata = () => { if(mine()) $("seek").style.display = isFinite(a.duration) ? "block" : "none"; };
-  a.onended = () => { if(!mine()) return; status("✔ Selesai" + (queue[qi] ? ": " + queue[qi].title : "")); if(queue.length > 1) step(1); };
-});
-function switchTo(a){ if(audio!==a){ audio.pause(); audio=a; } }
-
-function setInfo(t, s, art){
-  $("title").textContent = t; $("sub").textContent = s;
-  try { if("mediaSession" in navigator) navigator.mediaSession.metadata = new MediaMetadata({title:t, artist:s, artwork: art ? [{src:art}] : []}); } catch(e){}
-  $("disc").style.background = art ? `url("${art}") center/cover` : "";
-}
-function hilite(el){
-  document.querySelectorAll(".list>div").forEach(x => x.classList.remove("active"));
-  if(el) el.classList.add("active");
-}
-
-// ---------- Antrian (hasil pencarian / file lokal) ----------
-async function playItem(i, el){
-  const it = queue[i]; if(!it) return;
-  qi = i; mode = "queue";
-  hilite(el || (it.el)); setInfo(it.title, `${it.artist} · ${it.source}`, it.art);
-  let src = it.src;
-  if(!src){
-    status("Mencari file audio...");
-    try { src = it.src = await it.resolve(); } catch(e){ return status("Gagal: " + e.message); }
-  }
-  const a = it.local ? A.l : A.s;
-  switchTo(a);
-  if(it.local) initAnalyser();
-  a.src = src;
-  a.play().catch(e => status("Gagal memutar: " + e.message));
-}
-function step(d){ if(queue.length) playItem((qi + d + queue.length) % queue.length); }
-
-// ---------- Favorit berfolder (localStorage, per perangkat) ----------
-const FK = "music_favs_v2";
-const keyOf = it => (it.title + "|" + it.artist).toLowerCase().replace(/\s+/g," ").trim();
-let FD = (() => {
-  try { const d = JSON.parse(localStorage.getItem(FK)); if(d && d.folders && d.folders.length) return d; } catch(e){}
-  let old = []; try { old = JSON.parse(localStorage.getItem("music_favs_v1")) || []; } catch(e){}
-  return {active:"f1", folders:[{id:"f1", name:"Lagu Favorit", songs:old}]};
-})();
-const cur = () => FD.folders.find(f => f.id === FD.active) || FD.folders[0];
-const isFav = it => cur().songs.some(f => keyOf(f) === keyOf(it));
-const plain = it => { const {el, resolve, ...p} = it; return p; };
-function saveFavs(){ try { localStorage.setItem(FK, JSON.stringify(FD)); } catch(e){ status("Gagal menyimpan favorit (penyimpanan penuh/dinonaktifkan)."); } }
-function refreshHearts(){ document.querySelectorAll(".heart").forEach(h => h.classList.toggle("on", !!h._it && isFav(h._it))); }
-function toggleFav(it){
-  const f = cur(), i = f.songs.findIndex(x => keyOf(x) === keyOf(it));
-  if(i >= 0) f.songs.splice(i,1); else f.songs.push(plain(it));
-  saveFavs(); renderFavs(); refreshHearts();
-}
-function moveFav(it){
-  const o = FD.folders.filter(f => f.id !== cur().id);
-  if(!o.length) return status("Buat folder lain dulu.");
-  const t = o[parseInt(prompt("Ke folder nomor:\n" + o.map((f,i) => `${i+1}. ${f.name}`).join("\n")),10) - 1]; if(!t) return;
-  const mv = confirm("OK = Pindahkan, Batal = Salin");
-  if(!t.songs.some(x => keyOf(x) === keyOf(it))) t.songs.push(plain(it));
-  if(mv) cur().songs = cur().songs.filter(x => keyOf(x) !== keyOf(it));
-  saveFavs(); renderFavs(); status(`${mv ? "Dipindahkan" : "Disalin"} ke "${t.name}"`);
-}
-const archiveResolver = id => async () => {
-  const m = await (await fetch(`https://archive.org/metadata/${id}`)).json();
-  const f = (m.files || []).find(f => /\.mp3$/i.test(f.name));
-  if(!f) throw new Error("tidak ada file MP3 di item ini");
-  return `https://archive.org/download/${id}/${encodeURI(f.name)}`;
-};
-function renderFavs(){
-  $("folderSel").innerHTML = "";
-  FD.folders.forEach(f => { const o = document.createElement("option"); o.value = f.id; o.textContent = `${f.name} (${f.songs.length})`; o.selected = f.id === cur().id; $("folderSel").appendChild(o); });
-  const items = cur().songs.map(f => f.aid && !f.src ? {...f, resolve: archiveResolver(f.aid)} : {...f});
-  renderList($("favs"), items);
-  if(!items.length) $("favs").innerHTML = '<span class="tag">Folder kosong. Tekan ♥ pada lagu untuk menyimpan ke sini.</span>';
-}
-$("folderSel").onchange = e => { FD.active = e.target.value; saveFavs(); renderFavs(); refreshHearts(); };
-$("fNew").onclick = () => { const n = (prompt("Nama folder baru:") || "").trim(); if(!n) return;
-  if(FD.folders.some(f => f.name.toLowerCase() === n.toLowerCase())) return status("Nama folder sudah ada.");
-  const id = "f" + Date.now(); FD.folders.push({id, name:n, songs:[]}); FD.active = id; saveFavs(); renderFavs(); refreshHearts(); };
-$("fRen").onclick = () => { const n = (prompt("Nama baru:", cur().name) || "").trim(); if(!n) return;
-  if(FD.folders.some(f => f !== cur() && f.name.toLowerCase() === n.toLowerCase())) return status("Nama folder sudah ada.");
-  cur().name = n; saveFavs(); renderFavs(); };
-$("fDel").onclick = () => { if(FD.folders.length < 2) return status("Minimal harus ada satu folder.");
-  if(!confirm(`Hapus folder "${cur().name}" beserta ${cur().songs.length} lagunya?`)) return;
-  FD.folders = FD.folders.filter(f => f !== cur()); FD.active = FD.folders[0].id; saveFavs(); renderFavs(); refreshHearts(); };
-
-// ---------- Daftar lagu ----------
-function badge(it){ const b = document.createElement("span"); b.className = "badge" + (it.full ? " full" : ""); b.textContent = it.full ? "Lagu penuh" : "Preview 30 dtk"; return b; }
-function addRows(box, items, from, absQueue){
-  items.slice(from).forEach((it,k) => {
-    const i = from + k;
-    const d = document.createElement("div");
-    const img = it.art ? Object.assign(document.createElement("img"), {src: it.art, loading: "lazy"}) : Object.assign(document.createElement("div"), {className:"ph"});
-    const m = document.createElement("div"); m.className = "meta";
-    const b = document.createElement("b"); b.textContent = it.title; b.append(badge(it));
-    const s = document.createElement("span");
-    s.textContent = [it.artist, it.album, it.year, it.dur ? fmt(it.dur) : null, it.source].filter(Boolean).join(" · ");
-    m.append(b, s);
-    const h = document.createElement("button"); h.className = "mini heart" + (isFav(it) ? " on" : ""); h.textContent = "♥"; h.title = "Favorit"; h._it = it;
-    h.onclick = e => { e.stopPropagation(); toggleFav(it); };
-    const q = document.createElement("button"); q.className = "mini"; q.textContent = "＋"; q.title = "Tambah ke antrean";
-    q.onclick = e => { e.stopPropagation(); if(!queue.includes(it)) queue.push(it); status(`Ditambahkan ke antrean: ${it.title} (${queue.length} lagu)`); };
-    d.append(img, m, q, h);
-    if(box.id === "favs"){ const mv = document.createElement("button"); mv.className = "mini"; mv.textContent = "⇄"; mv.title = "Pindah/salin ke folder lain"; mv.onclick = e => { e.stopPropagation(); moveFav(it); }; d.append(mv); }
-    d.onclick = () => { queue = items; playItem(i, d); };
-    it.el = d; box.appendChild(d);
-  });
-}
-function renderList(box, items){ box.innerHTML = ""; addRows(box, items, 0); }
-
-// ---------- Pencarian ----------
-const enc = encodeURIComponent, PAGE = 25;
-const j = async u => { const r = await fetch(u); if(!r.ok) throw new Error("HTTP " + r.status); return r.json(); };
-const itBuf = {};   // cache hasil iTunes per kata kunci (API iTunes tidak punya offset)
-const mapIt = x => ({title:x.trackName, artist:x.artistName, album:x.collectionName, year:(x.releaseDate||"").slice(0,4), dur:x.trackTimeMillis ? x.trackTimeMillis/1000 : null, art:(x.artworkUrl100||"").replace("100x100","300x300"), src:x.previewUrl, source:"iTunes", full:false});
-const sources = {
-  itunes: async (q, p) => {
-    if(!itBuf[q]){
-      let rows = [];
-      try { // jika kata kunci cocok dengan nama artis, ambil katalog artisnya
-        const ar = (await j(`https://itunes.apple.com/search?term=${enc(q)}&media=music&entity=musicArtist&limit=1`)).results[0];
-        if(ar && ar.artistName.toLowerCase().includes(q.toLowerCase().trim()))
-          rows = (await j(`https://itunes.apple.com/lookup?id=${ar.artistId}&entity=song&limit=200`)).results.filter(x => x.wrapperType === "track");
-      } catch(e){}
-      if(!rows.length) rows = (await j(`https://itunes.apple.com/search?term=${enc(q)}&media=music&entity=song&limit=200`)).results;
-      itBuf[q] = rows.filter(x => x.previewUrl).map(mapIt);
-    }
-    const all = itBuf[q];
-    return {items: all.slice(p*PAGE, (p+1)*PAGE), more: all.length > (p+1)*PAGE};
-  },
-  audius: async (q, p) => {
-    const d = (await j(`https://api.audius.co/v1/tracks/search?query=${enc(q)}&app_name=MusicPlayer&limit=${PAGE}&offset=${p*PAGE}`)).data;
-    return {more: d.length >= PAGE, items: d.filter(x => x.is_streamable !== false).map(x => ({title:x.title, artist:x.user.name, dur:x.duration, year:(x.release_date||x.created_at||"").slice(0,4), art:x.artwork && x.artwork["150x150"], src:`https://api.audius.co/v1/tracks/${x.id}/stream?app_name=MusicPlayer`, source:"Audius", full:true}))};
-  },
-  archive: async (q, p) => {
-    const d = (await j(`https://archive.org/advancedsearch.php?q=${enc("(" + q + ") AND mediatype:audio")}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&rows=15&page=${p+1}&output=json`)).response.docs;
-    return {more: d.length >= 15, items: d.map(x => ({title:x.title, artist:[].concat(x.creator || "Internet Archive")[0], year:x.year, aid:x.identifier, source:"Internet Archive", full:true, art:`https://archive.org/services/img/${x.identifier}`, resolve: archiveResolver(x.identifier)}))};
-  }
-};
-
-let S = {q:"", names:[], page:0, more:{}, items:[], seen:new Map(), token:0};
-function addItems(list){
-  const fresh = [];
-  list.forEach(it => {
-    const k = keyOf(it), old = S.seen.get(k);
-    if(!old){ S.seen.set(k, it); S.items.push(it); fresh.push(it); }
-    else if(!old.full && it.full){ const i = S.items.indexOf(old); S.items[i] = it; S.seen.set(k, it); S.dirty = true; } // utamakan versi penuh
-  });
-}
-async function runSearch(more){
-  const q = $("q").value.trim(); if(q.length < 2) return;
-  const sel = $("srcSel").value;
-  if(!more){ S = {q, names: sel==="all" ? Object.keys(sources) : [sel], page:0, more:{}, items:[], seen:new Map(), token:S.token+1, dirty:false}; $("results").innerHTML = ""; $("more").style.display = "none"; }
-  else S.page++;
-  const tk = S.token, from = S.items.length, names = more ? S.names.filter(n => S.more[n]) : S.names;
-  status("Mencari...");
-  const res = await Promise.allSettled(names.map(n => sources[n](S.q, S.page)));
-  if(tk !== S.token) return; // pencarian lebih baru sudah berjalan
-  const fails = [];
-  res.forEach((r,i) => { if(r.status==="fulfilled"){ S.more[names[i]] = r.value.more; addItems(r.value.items); } else { S.more[names[i]] = false; fails.push(names[i]); } });
-  if(S.dirty){ S.dirty = false; renderList($("results"), S.items); } else addRows($("results"), S.items, from);
-  const full = S.items.filter(x => x.full).length, anyMore = Object.values(S.more).some(Boolean);
-  $("count").textContent = S.items.length ? `${S.items.length} hasil dimuat (${full} lagu penuh, ${S.items.length-full} preview).` + (anyMore ? " Masih ada hasil lain; ini belum tentu seluruh diskografi." : " Tidak ada hasil lagi dari sumber yang dipilih; katalog sumber bisa saja belum lengkap.") : "";
-  $("more").style.display = anyMore ? "block" : "none";
-  if(!S.items.length) status(fails.length === names.length ? `Layanan sumber bermasalah (${fails.join(", ")}). Coba lagi nanti.` : `Tidak ada hasil untuk "${S.q}". Coba kata kunci lain.`);
-  else status(fails.length ? `Sebagian sumber gagal: ${fails.join(", ")}` : "");
-}
-$("search").onclick = () => runSearch(false);
-$("more").onclick = () => runSearch(true);
-let deb;
-$("q").addEventListener("input", () => {
-  clearTimeout(deb);
-  const q = $("q").value.trim(); if(q.length < 2) return;
-  deb = setTimeout(async () => { // saran autocomplete + pencarian otomatis
-    try {
-      const r = (await j(`https://itunes.apple.com/search?term=${enc(q)}&media=music&entity=song&limit=8`)).results;
-      $("sug").innerHTML = ""; [...new Set(r.flatMap(x => [x.artistName, x.trackName]))].slice(0,8).forEach(v => { const o = document.createElement("option"); o.value = v; $("sug").appendChild(o); });
-    } catch(e){}
-    runSearch(false);
-  }, 450);
-});
-$("q").addEventListener("keydown", e => { if (e.key === "Enter"){ clearTimeout(deb); runSearch(false); } });
-renderFavs();
-
-// ---------- Radio (khusus Indonesia; daftar dimuat dari direktori Radio Browser) ----------
-let stations = [];
-const RB = ["de1","fr1","nl1","at1"].map(x => `https://${x}.api.radio-browser.info`);
-async function loadRadios(){
-  $("radioInfo").textContent = "Memuat stasiun radio Indonesia...";
-  for(const b of RB){
-    try {
-      const r = await j(`${b}/json/stations/search?countrycode=ID&hidebroken=true&order=clickcount&reverse=true&limit=400`);
-      const seen = new Set();
-      stations = r.filter(x => x.lastcheckok && /^https:/.test(x.url_resolved || "") && x.name.trim() && !seen.has(x.name.trim().toLowerCase()) && seen.add(x.name.trim().toLowerCase()));
-      return renderRadios();
-    } catch(e){}
-  }
-  $("radioInfo").textContent = "Daftar radio gagal dimuat (layanan direktori tidak bisa dijangkau). Anda tetap bisa menempel URL stream sendiri.";
-}
-function renderRadios(){
-  const f = $("rq").value.trim().toLowerCase(), sel = $("radioSel"), groups = {};
-  sel.innerHTML = "";
-  stations.forEach((x,i) => { if(f && !(x.name + " " + x.state).toLowerCase().includes(f)) return; (groups[x.state.trim() || "Nasional / lainnya"] ||= []).push([x,i]); });
-  const keys = Object.keys(groups).sort(); let n = 0;
-  keys.forEach(k => { const g = document.createElement("optgroup"); g.label = k;
-    groups[k].forEach(([x,i]) => { const o = document.createElement("option"); o.value = i; o.textContent = x.name.trim() + (x.tags ? " · " + x.tags.split(",")[0] : ""); g.appendChild(o); n++; });
-    sel.appendChild(g); });
-  $("radioInfo").textContent = n ? `${n} stasiun tersedia (hanya stream HTTPS yang terdeteksi aktif; sebagian bisa saja sedang offline).` : "Tidak ada stasiun yang cocok.";
-}
-let rdeb; $("rq").oninput = () => { clearTimeout(rdeb); rdeb = setTimeout(renderRadios, 250); };
-$("radioGo").onclick = () => { const x = stations[$("radioSel").value]; if(!x) return $("radioInfo").textContent = "Pilih stasiun dulu.";
-  playStream(x.url_resolved, x.name.trim(), (x.state || "Indonesia") + " · Radio live", null); $("radioInfo").textContent = "Menghubungkan: " + x.name.trim(); };
-$("radioStop").onclick = () => { A.r.pause(); status("Radio dihentikan."); };
-function playStream(url, name, sub, el){
-  mode = "stream"; queue = []; hilite(el); setInfo(name, sub || "Live stream");
-  switchTo(A.r); $("seek").style.display = "none"; $("time").textContent = "";
-  A.r.src = url; status("Menghubungkan ke stream...");
-  A.r.play().catch(e => { status("Gagal memutar: " + e.message); $("radioInfo").textContent = "Stream tidak bisa diputar. Coba stasiun lain."; });
-}
-loadRadios();
-$("goUrl").onclick = () => { const u = $("url").value.trim(); if(u) playStream(u, "Stream kustom", u, null); };
-
-// ---------- File lokal ----------
-const local = [];
-$("pick").onclick = () => $("files").click();
-$("files").onchange = e => {
-  [...e.target.files].forEach(f => local.push({title:f.name.replace(/\.[^.]+$/,""), artist:"File lokal", source:"Lokal", src:URL.createObjectURL(f), local:true}));
-  renderList($("tracks"), local);
-  queue = local; if(qi < 0 || mode !== "queue") playItem(0, $("tracks").children[0]);
-};
-
-// ---------- Kontrol ----------
-$("play").onclick = () => { if(!audio.src) return status("Pilih lagu atau stasiun dulu."); audio.paused ? audio.play() : audio.pause(); };
-$("next").onclick = () => step(1);
-$("prev").onclick = () => step(-1);
-$("vol").oninput = e => Object.values(A).forEach(a => a.volume = e.target.value);
-$("seek").oninput = e => { if(isFinite(audio.duration)) audio.currentTime = audio.duration * e.target.value/100; };
-
-// ---------- Visualizer ----------
-let ctx, analyser, data;
-function initAnalyser(){
-  if(IS_MOBILE) return; // di HP, Web Audio bisa menghentikan musik saat layar terkunci
-  if(ctx){ ctx.state==="suspended" && ctx.resume(); return; }
-  try {
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const s = ctx.createMediaElementSource(A.l);
-    analyser = ctx.createAnalyser(); analyser.fftSize = 128;
-    s.connect(analyser); analyser.connect(ctx.destination);
-    data = new Uint8Array(analyser.frequencyBinCount);
-  } catch(e){ ctx = null; }
-}
-const cv = $("viz"), g = cv.getContext("2d");
-(function draw(){
-  requestAnimationFrame(draw);
-  g.clearRect(0,0,cv.width,cv.height);
-  const n = 48, w = cv.width/n, real = audio === A.l && analyser;
-  if(real) analyser.getByteFrequencyData(data);
-  for(let i=0;i<n;i++){
-    let v = audio.paused ? 3 : real ? data[i]/255*cv.height : (Math.sin(Date.now()/230+i*.5)*.5+.5)*cv.height*(.3+Math.random()*.5);
-    g.fillStyle = `hsl(${260+i*2},80%,65%)`;
-    g.fillRect(i*w+1, cv.height-v, w-3, v);
-  }
-})();
-
-// ---------- Mode HP: kontrol layar kunci + background play ----------
-const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
-if("mediaSession" in navigator){
-  const ms = navigator.mediaSession, set = (n,f) => { try { ms.setActionHandler(n,f); } catch(e){} };
-  set("play", () => audio.play());
-  set("pause", () => audio.pause());
-  set("previoustrack", () => step(-1));
-  set("nexttrack", () => step(1));
-  set("seekto", d => { if(isFinite(audio.duration)) audio.currentTime = d.seekTime; });
-  Object.values(A).forEach(a => {
-    a.addEventListener("playing", () => { if(a===audio) ms.playbackState = "playing"; });
-    a.addEventListener("pause", () => { if(a===audio) ms.playbackState = "paused"; });
-    a.addEventListener("timeupdate", () => {
-      if(a===audio && isFinite(a.duration) && a.duration > 0) { try { ms.setPositionState({duration:a.duration, position:a.currentTime, playbackRate:a.playbackRate}); } catch(e){} }
-    });
-  });
-}
-if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
-</script>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

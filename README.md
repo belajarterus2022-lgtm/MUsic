@@ -1,0 +1,50 @@
+# Live Music Player
+
+Pemutar musik & radio Indonesia dengan akun. Siapa pun bisa daftar lalu memakai aplikasi ini; favorit tersimpan di akun masing-masing, jadi tetap ada di browser atau HP mana pun.
+
+## Isi
+| File | Fungsi |
+|---|---|
+| `index.html` | Halaman aplikasi |
+| `styles.css` | Tampilan |
+| `app.js` | Login, favorit, pencarian, pemutar, radio, lirik |
+| `config.js` | **Isi kunci Supabase (dan YouTube, opsional) di sini** |
+| `supabase-setup.sql` | Struktur database, dijalankan sekali di Supabase |
+| `sw.js`, `manifest.webmanifest`, `icon-*.png` | Agar bisa dipasang seperti aplikasi di HP |
+
+## Pemasangan (sekitar 10 menit)
+
+### 1. Database & login (Supabase, gratis)
+1. Daftar di https://supabase.com → **New project**.
+2. Buka **SQL Editor → New query**, tempel seluruh isi `supabase-setup.sql`, tekan **Run**.
+3. Buka **Project Settings → API**. Salin **Project URL** dan kunci **anon public** ke `config.js`.
+4. Buka **Authentication → URL Configuration**:
+   - **Site URL**: alamat GitHub Pages Anda, mis. `https://namaanda.github.io/MUsic/`
+   - **Redirect URLs**: tambahkan alamat yang sama.
+5. (Opsional) Agar orang bisa langsung masuk tanpa membuka email konfirmasi:
+   **Authentication → Sign In / Providers → Email → matikan "Confirm email"**.
+   Catatan: email bawaan Supabase dibatasi beberapa email per jam. Jika banyak orang mendaftar, matikan konfirmasi email atau pasang SMTP sendiri.
+
+### 2. YouTube API key (opsional, disarankan)
+Tanpa key, pencarian YouTube memakai server publik Piped/Invidious yang gratis tapi kadang lambat atau mati.
+1. https://console.cloud.google.com → buat proyek → **APIs & Services → Library** → aktifkan **YouTube Data API v3**.
+2. **Credentials → Create credentials → API key**.
+3. Klik key itu → **Application restrictions: HTTP referrers** → tambahkan `https://namaanda.github.io/*`.
+   **API restrictions** → pilih YouTube Data API v3.
+4. Tempel ke `YOUTUBE_API_KEY` di `config.js`.
+Kuota gratis: 10.000 unit/hari; satu pencarian ≈ 101 unit, jadi sekitar 99 pencarian per hari untuk semua pengguna. Bila kuota habis, aplikasi otomatis beralih ke Piped/Invidious.
+
+### 3. Unggah ke repo
+Ganti semua file lama di repo dengan file di folder ini, commit, lalu buka alamat GitHub Pages Anda. Halaman pertama adalah **Masuk / Daftar**.
+
+## Yang perlu diketahui
+- **Lagu penuh saja.** Preview iTunes 30 detik sudah dihapus. Semua hasil di bawah 1 menit (preview, Shorts) disaring. iTunes hanya dipakai untuk saran nama saat mengetik.
+- **YouTube** diputar lewat player resmi YouTube, jadi videonya tampil di panel "Sedang diputar". Sebagian video resmi label melarang diputar di luar YouTube; aplikasi akan memberi tahu lalu melewati ke lagu berikutnya. Di HP, YouTube biasanya berhenti saat layar dikunci (aturan YouTube). Lagu dari Audius, Internet Archive, dan radio tetap jalan saat layar terkunci.
+- **Radio** diambil langsung dari direktori Radio Browser setiap kali dibuka, hanya stasiun yang lolos pengecekan aktif dan memakai HTTPS (stream HTTP diblokir browser di situs HTTPS). Stasiun yang ternyata tidak merespons ditandai redup.
+- **Lirik** dari LRCLIB. Jika tersedia versi tersinkron, baris yang sedang dinyanyikan disorot dan bisa diketuk untuk loncat ke bagian itu. Tidak semua lagu Indonesia punya lirik di LRCLIB; ada tautan "Cari lirik di Google".
+- **Favorit lama** di browser (versi sebelumnya) bisa dipindahkan ke akun lewat tombol yang muncul di halaman Favorit. Lagu lama dari iTunes otomatis dicarikan versi lengkapnya di YouTube saat diputar.
+- Proyek Supabase gratis akan dijeda bila tidak dipakai 7 hari; cukup buka dashboard Supabase dan tekan **Restore**.
+- Kunci `anon` Supabase memang aman di situs publik; data tiap akun dilindungi Row Level Security. Jangan pernah menaruh kunci `service_role` di `config.js`.
+
+## Pintasan keyboard
+Spasi: putar/jeda. Shift + →/←: lagu berikutnya/sebelumnya.
