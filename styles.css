@@ -149,6 +149,7 @@ code{font-size:.9em;background:var(--surface2);padding:1px 6px;border-radius:6px
 .src{flex:none;font-size:11px;font-weight:600;padding:1px 7px;border-radius:6px;background:var(--surface2);color:var(--muted);line-height:18px}
 .src.yt{color:#E8746A}
 .src.audius{color:#B08CF0}
+.src.sc{color:#FF7A33}
 .src.archive{color:var(--teal)}
 .row-end{display:flex;align-items:center;gap:2px}
 .dur{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;width:44px;text-align:right;margin-right:4px}
@@ -189,7 +190,9 @@ code{font-size:.9em;background:var(--surface2);padding:1px 6px;border-radius:6px
 .cover.has-art{color:transparent}
 .yt-wrap{position:absolute;inset:0;background:#000}
 .yt-wrap.off{visibility:hidden;pointer-events:none}
-.yt-wrap iframe,#yt{width:100%;height:100%;border:0}
+.yt-wrap iframe,#yt,#sc{width:100%;height:100%;border:0}
+.yt-wrap[data-eng="sc"] #yt{display:none}
+.yt-wrap:not([data-eng="sc"]) #sc{display:none}
 .pip-open{display:none}
 .now-meta{display:flex;gap:10px;align-items:flex-start;padding:16px 18px 6px;flex:none}
 .now-text{flex:1;min-width:0}

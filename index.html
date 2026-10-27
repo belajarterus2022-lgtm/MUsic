@@ -115,16 +115,18 @@
         <h1 class="view-title">Cari lagu</h1>
         <form class="searchbox" id="searchForm" role="search">
           <svg class="i"><use href="#i-search"/></svg>
-          <input id="q" type="search" list="sug" autocomplete="off" enterkeyhint="search" placeholder="Judul, penyanyi, band, atau tahun">
+          <input id="q" type="search" list="sug" autocomplete="off" enterkeyhint="search" placeholder="Judul, penyanyi, atau tempel link SoundCloud">
           <datalist id="sug"></datalist>
           <button class="btn primary" type="submit">Cari</button>
         </form>
         <div class="seg small" id="srcSeg" role="group" aria-label="Sumber lagu">
           <button type="button" data-src="all" aria-pressed="true">Semua sumber</button>
           <button type="button" data-src="youtube">YouTube</button>
+          <button type="button" data-src="soundcloud">SoundCloud</button>
           <button type="button" data-src="audius">Audius</button>
           <button type="button" data-src="archive">Internet Archive</button>
         </div>
+        <p class="count" id="scHint" hidden></p>
         <p class="count" id="count"></p>
         <div class="list" id="results"></div>
         <div class="empty" id="searchEmpty">
@@ -189,6 +191,7 @@
         <div class="cover" id="cover"><svg class="i xl"><use href="#i-music"/></svg></div>
         <div class="yt-wrap off" id="ytWrap">
           <div id="yt"></div>
+          <div id="sc"></div>
           <button class="pip-open" id="pipOpen" aria-label="Buka layar sedang diputar"><svg class="i sm"><use href="#i-expand"/></svg></button>
         </div>
       </div>

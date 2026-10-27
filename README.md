@@ -8,7 +8,7 @@ Pemutar musik & radio Indonesia dengan akun. Siapa pun bisa daftar lalu memakai 
 | `index.html` | Halaman aplikasi |
 | `styles.css` | Tampilan |
 | `app.js` | Login, favorit, pencarian, pemutar, radio, lirik |
-| `config.js` | **Isi kunci Supabase (dan YouTube, opsional) di sini** |
+| `config.js` | **Isi kunci Supabase (dan YouTube / SoundCloud, opsional) di sini** |
 | `supabase-setup.sql` | Struktur database, dijalankan sekali di Supabase |
 | `sw.js`, `manifest.webmanifest`, `icon-*.png` | Agar bisa dipasang seperti aplikasi di HP |
 
@@ -34,11 +34,17 @@ Tanpa key, pencarian YouTube memakai server publik Piped/Invidious yang gratis t
 4. Tempel ke `YOUTUBE_API_KEY` di `config.js`.
 Kuota gratis: 10.000 unit/hari; satu pencarian ≈ 101 unit, jadi sekitar 99 pencarian per hari untuk semua pengguna. Bila kuota habis, aplikasi otomatis beralih ke Piped/Invidious.
 
-### 3. Unggah ke repo
+### 3. SoundCloud (opsional)
+- **Memutar**: tidak perlu kunci. Buka soundcloud.com, salin link lagu atau playlist, tempel di kolom **Cari lagu**, tekan Cari, lalu ketuk lagunya. Diputar lewat widget resmi SoundCloud (tampil di panel "Sedang diputar", seperti YouTube).
+- **Mencari dengan mengetik judul**: perlu `SOUNDCLOUD_CLIENT_ID` di `config.js`. SoundCloud sudah lama membatasi pendaftaran API key baru, jadi bila Anda tidak punya, pakai cara tempel link. Tanpa Client ID, aplikasi menampilkan tautan "Cari ... di SoundCloud" yang membuka pencarian resmi mereka.
+- Lagu SoundCloud Go+ yang hanya bisa diputar 30 detik disaring dari hasil pencarian. Lagu yang pemiliknya melarang diputar di luar SoundCloud akan dilewati. Seperti YouTube, di HP pemutar SoundCloud bisa berhenti saat layar dikunci.
+
+### 4. Unggah ke repo
 Ganti semua file lama di repo dengan file di folder ini, commit, lalu buka alamat GitHub Pages Anda. Halaman pertama adalah **Masuk / Daftar**.
 
 ## Yang perlu diketahui
 - **Lagu penuh saja.** Preview iTunes 30 detik sudah dihapus. Semua hasil di bawah 1 menit (preview, Shorts) disaring. iTunes hanya dipakai untuk saran nama saat mengetik.
+- **SoundCloud** ditambahkan sebagai sumber ke-4 (lihat bagian 3).
 - **YouTube** diputar lewat player resmi YouTube, jadi videonya tampil di panel "Sedang diputar". Sebagian video resmi label melarang diputar di luar YouTube; aplikasi akan memberi tahu lalu melewati ke lagu berikutnya. Di HP, YouTube biasanya berhenti saat layar dikunci (aturan YouTube). Lagu dari Audius, Internet Archive, dan radio tetap jalan saat layar terkunci.
 - **Radio** diambil langsung dari direktori Radio Browser setiap kali dibuka, hanya stasiun yang lolos pengecekan aktif dan memakai HTTPS (stream HTTP diblokir browser di situs HTTPS). Stasiun yang ternyata tidak merespons ditandai redup.
 - **Lirik** dari LRCLIB. Jika tersedia versi tersinkron, baris yang sedang dinyanyikan disorot dan bisa diketuk untuk loncat ke bagian itu. Tidak semua lagu Indonesia punya lirik di LRCLIB; ada tautan "Cari lirik di Google".

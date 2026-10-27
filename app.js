@@ -2,11 +2,11 @@
 /* =====================================================================
    Live Music Player
    - Login/daftar & favorit per akun: Supabase
-   - Lagu penuh: YouTube (player resmi), Audius, Internet Archive
+   - Lagu penuh: YouTube (player resmi), SoundCloud (widget resmi), Audius, Internet Archive
    - Radio Indonesia aktif: direktori Radio Browser
    - Lirik (tersinkron bila ada): LRCLIB
    ===================================================================== */
-const CFG = Object.assign({ SUPABASE_URL: "", SUPABASE_ANON_KEY: "", YOUTUBE_API_KEY: "" }, window.APP_CONFIG || {});
+const CFG = Object.assign({ SUPABASE_URL: "", SUPABASE_ANON_KEY: "", YOUTUBE_API_KEY: "", SOUNDCLOUD_CLIENT_ID: "" }, window.APP_CONFIG || {});
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const enc = encodeURIComponent;
@@ -227,18 +227,19 @@ $$("[data-tab]").forEach(b => b.onclick = () => showView(b.dataset.tab));
 
 /* =====================================================================
    LAGU: identitas & baris daftar
-   kind: yt | audius | archive | local | legacy(favorit lama, dicari ulang di YouTube) | radio
+   kind: yt | sc | audius | archive | local | legacy(favorit lama, dicari ulang di YouTube) | radio
 ===================================================================== */
-const SRC_LABEL = { yt: "YouTube", audius: "Audius", archive: "Internet Archive", local: "File lokal", legacy: "YouTube", radio: "Radio" };
-const SRC_CLASS = { yt: "yt", legacy: "yt", audius: "audius", archive: "archive" };
+const SRC_LABEL = { yt: "YouTube", sc: "SoundCloud", audius: "Audius", archive: "Internet Archive", local: "File lokal", legacy: "YouTube", radio: "Radio" };
+const SRC_CLASS = { yt: "yt", legacy: "yt", sc: "sc", audius: "audius", archive: "archive" };
 function songKey(it) {
   if (it.kind === "yt") return "yt:" + it.vid;
+  if (it.kind === "sc") return "sc:" + (it.scid || it.scurl);
   if (it.kind === "audius") return "au:" + it.auid;
   if (it.kind === "archive") return "ia:" + it.aid;
   return "t:" + norm(it.title + " " + it.artist);
 }
 function plainSong(it) {
-  const o = {}; ["kind", "vid", "auid", "aid", "src", "title", "artist", "album", "year", "dur", "art", "raw"].forEach(k => { if (it[k] != null && it[k] !== "") o[k] = it[k]; });
+  const o = {}; ["kind", "vid", "scid", "scurl", "auid", "aid", "src", "title", "artist", "album", "year", "dur", "art", "raw"].forEach(k => { if (it[k] != null && it[k] !== "") o[k] = it[k]; });
   if (o.kind === "archive") delete o.src;
   return o;
 }
@@ -549,6 +550,82 @@ async function ytFindOne(q) {
   return best;
 }
 
+/* --- SoundCloud: pencarian (butuh Client ID, opsional) + tempel link (tanpa kunci) --- */
+let scApiP = null;
+function loadSCApi() {
+  if (window.SC && SC.Widget) return Promise.resolve();
+  return scApiP || (scApiP = new Promise((res, rej) => {
+    const s = el("script", { src: "https://w.soundcloud.com/player/api.js" });
+    s.onload = () => res();
+    s.onerror = () => { scApiP = null; s.remove(); rej(new Error("SoundCloud tidak bisa dimuat")); };
+    document.head.append(s);
+  }));
+}
+const SC_URL = /^https?:\/\/(?:www\.|m\.|on\.)?soundcloud\.com\/\S+$/i;
+function scItem(x) {
+  return {
+    kind: "sc", scid: x.id, scurl: x.permalink_url, title: x.title,
+    artist: (x.user && x.user.username) || (x.publisher_metadata && x.publisher_metadata.artist) || "SoundCloud",
+    dur: Math.round((x.full_duration || x.duration || 0) / 1000),
+    year: (x.release_date || x.created_at || "").slice(0, 4) || null,
+    art: x.artwork_url ? x.artwork_url.replace("-large", "-t300x300") : (x.user && x.user.avatar_url) || null
+  };
+}
+async function scSearch(q, st) {
+  const cid = CFG.SOUNDCLOUD_CLIENT_ID;
+  if (!cid) return { more: false, items: [] };
+  st.scPage = (st.scPage ?? -1) + 1;
+  const d = (await getJSON(`https://api-v2.soundcloud.com/search/tracks?q=${enc(q)}&client_id=${enc(cid)}&limit=25&offset=${st.scPage * 25}`)).collection || [];
+  return {
+    more: d.length >= 25,
+    items: d.filter(x => x.permalink_url && x.streamable !== false && x.policy !== "BLOCK" && x.policy !== "SNIP" && (x.full_duration || x.duration) >= MIN_SEC * 1000).map(scItem)
+  };
+}
+// Baca info lagu/playlist dari link SoundCloud lewat widget tersembunyi (tanpa kunci API)
+async function scFromUrl(url) {
+  await loadSCApi();
+  return new Promise((resolve, reject) => {
+    const f = el("iframe", { src: "https://w.soundcloud.com/player/?auto_play=false&url=" + enc(url), allow: "autoplay", "aria-hidden": "true", tabindex: "-1", style: "position:fixed;left:-9999px;top:0;width:300px;height:166px;border:0" });
+    document.body.append(f);
+    let done = false;
+    const end = (fn, v) => { if (done) return; done = true; clearTimeout(t); try { f.remove(); } catch { } fn(v); };
+    const t = setTimeout(() => end(reject, new Error("Link SoundCloud tidak merespons.")), 15000);
+    const w = SC.Widget(f);
+    w.bind(SC.Widget.Events.READY, () => {
+      w.getSounds(list => {
+        if (Array.isArray(list) && list.length) return end(resolve, list.map(scItem).filter(x => x.scurl));
+        w.getCurrentSound(s => s && s.permalink_url ? end(resolve, [scItem(s)]) : end(reject, new Error("Lagu tidak ditemukan atau tidak boleh diputar di luar SoundCloud.")));
+      });
+    });
+    w.bind(SC.Widget.Events.ERROR, () => end(reject, new Error("Link SoundCloud tidak bisa dibuka.")));
+  });
+}
+async function runScUrl(url) {
+  S = { q: url, items: [], keys: new Set(), more: {}, st: {}, tok: S.tok + 1, busy: false };
+  const tk = S.tok;
+  $("#results").innerHTML = ""; $("#results").append(el("div", { class: "skeleton" }), el("div", { class: "skeleton" }));
+  $("#searchEmpty").hidden = true; $("#more").hidden = true; $("#count").textContent = "Membuka link SoundCloud…"; $("#q").blur();
+  try {
+    const items = await scFromUrl(url);
+    if (tk !== S.tok) return;
+    items.forEach(it => { const k = songKey(it); if (!S.keys.has(k)) { S.keys.add(k); S.items.push(it); } });
+    $("#results").innerHTML = "";
+    renderRows($("#results"), S.items, "search", 0);
+    $("#count").textContent = S.items.length > 1 ? `${S.items.length} lagu dari link SoundCloud. Ketuk untuk memutar.` : "Lagu dari link SoundCloud. Ketuk untuk memutar.";
+  } catch (e) {
+    if (tk !== S.tok) return;
+    $("#results").innerHTML = ""; $("#count").textContent = "";
+    $("#results").append(el("div", { class: "empty" }, el("p", { text: e.message || "Link SoundCloud tidak bisa dibuka." })));
+  }
+}
+function updateScHint() {
+  const h = $("#scHint"); if (!h) return;
+  const show = !CFG.SOUNDCLOUD_CLIENT_ID && (srcSel === "soundcloud" || srcSel === "all") && $("#q").value.trim().length >= 2 && !SC_URL.test($("#q").value.trim());
+  h.hidden = !show; if (!show) return;
+  h.textContent = "SoundCloud: untuk memutar, tempel link lagunya di kolom cari. ";
+  h.append(el("a", { href: "https://soundcloud.com/search/sounds?q=" + enc($("#q").value.trim()), target: "_blank", rel: "noopener", text: "Cari “" + $("#q").value.trim() + "” di SoundCloud" }));
+}
+
 /* --- Audius --- */
 async function audiusSearch(q, st) {
   st.auPage = (st.auPage ?? -1) + 1;
@@ -581,7 +658,7 @@ async function archiveSrc(aid) {
   return `https://archive.org/download/${aid}/${f.name.split("/").map(enc).join("/")}`;
 }
 
-const SOURCES = { youtube: ytSearch, audius: audiusSearch, archive: archiveSearch };
+const SOURCES = { youtube: ytSearch, soundcloud: scSearch, audius: audiusSearch, archive: archiveSearch };
 
 function score(it, q) {
   const qt = norm(q).split(" ").filter(Boolean); if (!qt.length) return 0;
@@ -596,13 +673,15 @@ let S = { q: "", src: "all", items: [], keys: new Set(), more: {}, st: {}, tok: 
 let srcSel = store.get("srcSel", "all");
 $$("#srcSeg button").forEach(b => {
   b.setAttribute("aria-pressed", b.dataset.src === srcSel);
-  b.onclick = () => { srcSel = b.dataset.src; store.set("srcSel", srcSel); $$("#srcSeg button").forEach(x => x.setAttribute("aria-pressed", x === b)); if ($("#q").value.trim()) runSearch(false); };
+  b.onclick = () => { srcSel = b.dataset.src; store.set("srcSel", srcSel); $$("#srcSeg button").forEach(x => x.setAttribute("aria-pressed", x === b)); if ($("#q").value.trim()) runSearch(false); updateScHint(); };
 });
 
 async function runSearch(more) {
   const q = $("#q").value.trim();
+  if (!more && SC_URL.test(q)) { updateScHint(); return runScUrl(q); }
   if (q.length < 2) { if (!more) toast("Ketik minimal 2 huruf."); return; }
   if (!more) {
+    updateScHint();
     const names = srcSel === "all" ? Object.keys(SOURCES) : [srcSel];
     S = { q, items: [], keys: new Set(), more: Object.fromEntries(names.map(n => [n, true])), st: {}, tok: S.tok + 1, busy: false };
     $("#results").innerHTML = ""; $("#results").append(el("div", { class: "skeleton" }), el("div", { class: "skeleton" }), el("div", { class: "skeleton" }));
@@ -634,7 +713,7 @@ async function runSearch(more) {
   renderRows($("#results"), S.items, "search", from);
   const anyMore = Object.values(S.more).some(Boolean);
   $("#more").hidden = !anyMore;
-  const failTxt = fails.length ? ` Sumber yang sedang tidak bisa dijangkau: ${fails.map(n => ({ youtube: "YouTube", audius: "Audius", archive: "Internet Archive" })[n]).join(", ")}.` : "";
+  const failTxt = fails.length ? ` Sumber yang sedang tidak bisa dijangkau: ${fails.map(n => ({ youtube: "YouTube", soundcloud: "SoundCloud", audius: "Audius", archive: "Internet Archive" })[n]).join(", ")}.` : "";
   if (!S.items.length) {
     $("#count").textContent = "";
     $("#results").append(el("div", { class: "empty" }, el("p", { text: (fails.length === names.length ? "Semua sumber lagu sedang tidak bisa dijangkau. Coba lagi sebentar lagi." : `Tidak ada lagu penuh untuk "${S.q}". Coba ejaan lain atau tambahkan nama penyanyinya.`) + failTxt })));
@@ -661,10 +740,10 @@ $("#q").addEventListener("input", () => {
   $("#tryChips").append(el("button", { class: "chip", text: t, onclick: () => { $("#q").value = t; runSearch(false); } })));
 
 /* =====================================================================
-   PEMUTAR (YouTube iframe resmi + elemen audio)
+   PEMUTAR (YouTube iframe resmi + SoundCloud widget resmi + elemen audio)
 ===================================================================== */
 const Player = {
-  engine: null, audio: new Audio(), yt: null, ytReady: false, pendingVid: null,
+  engine: null, audio: new Audio(), yt: null, ytReady: false, pendingVid: null, sc: null, scPos: 0, scDur: 0, scT: 0,
   list: [], i: -1, cur: null, tok: 0, playing: false, errRun: 0,
   vol: store.get("vol", 80), muted: false, shuffle: store.get("shuffle", false), repeat: store.get("repeat", "off"), seeking: false,
 
@@ -697,8 +776,39 @@ const Player = {
     if (this.engine !== engine) {
       if (this.engine === "yt" && this.ytReady) try { this.yt.stopVideo(); } catch { }
       if (this.engine === "audio") { this.audio.pause(); this.audio.removeAttribute("src"); this.audio.load(); }
+      if (this.engine === "sc") this.killSc();
     }
-    this.engine = engine; $("#ytWrap").classList.toggle("off", engine !== "yt"); updatePip();
+    this.engine = engine;
+    $("#ytWrap").dataset.eng = engine || "";
+    $("#ytWrap").classList.toggle("off", engine !== "yt" && engine !== "sc"); updatePip();
+  },
+  killSc() {
+    clearTimeout(this.scT);
+    try { if (this.sc) this.sc.pause(); } catch { }
+    this.sc = null; this.scPos = 0; this.scDur = 0;
+    const box = $("#sc"); if (box) box.innerHTML = "";
+  },
+  async playSc(it, tk) {
+    this.killSc();
+    try { await loadSCApi(); } catch (e) { if (tk === this.tok) this.onError(e.message); return; }
+    if (tk !== this.tok) return;
+    this.scDur = it.dur || 0;
+    const p = new URLSearchParams({ url: it.scurl, auto_play: "true", visual: "true", hide_related: "true", show_comments: "false", show_user: "true", show_reposts: "false", buying: "false", liking: "false", sharing: "false", download: "false" });
+    const f = el("iframe", { src: "https://w.soundcloud.com/player/?" + p, allow: "autoplay" });
+    $("#sc").append(f);
+    const w = this.sc = SC.Widget(f), E = SC.Widget.Events, live = () => this.engine === "sc" && this.sc === w && tk === this.tok;
+    w.bind(E.READY, () => {
+      if (!live()) return;
+      w.setVolume(this.muted ? 0 : this.vol);
+      w.getDuration(d => { if (live() && d) this.scDur = d / 1000; });
+      w.bind(E.PLAY, () => { if (live()) { clearTimeout(this.scT); this.onPlaying(); } });
+      w.bind(E.PAUSE, () => { if (live()) this.setPlaying(false); });
+      w.bind(E.FINISH, () => { if (live()) this.onEnded(); });
+      w.bind(E.ERROR, () => { if (live()) this.onError("Lagu SoundCloud ini tidak bisa diputar."); });
+      w.bind(E.PLAY_PROGRESS, e => { if (live()) this.scPos = (e.currentPosition || 0) / 1000; });
+    });
+    clearTimeout(this.scT);
+    this.scT = setTimeout(() => { if (live() && !this.playing) status("Jika belum terdengar, tekan tombol putar di pemutar SoundCloud.", 6000); }, 12000);
   },
   playList(list, i) {
     this.list = list.slice();
@@ -722,6 +832,11 @@ const Player = {
         if (tk !== this.tok) return;
         Object.assign(it, { kind: "yt", vid: r.vid, raw: r.raw, dur: r.dur, art: it.art || r.art });
         Fav.upgrade(it, oldKey); showNow(it); markPlaying();
+      }
+      if (it.kind === "sc") {
+        this.use("sc"); status("Memuat dari SoundCloud…");
+        await this.playSc(it, tk);
+        return;
       }
       if (it.kind === "yt") {
         this.use("yt"); status("Memuat…");
@@ -786,15 +901,17 @@ const Player = {
   },
   time() {
     if (this.engine === "yt" && this.ytReady && this.yt.getCurrentTime) return [this.yt.getCurrentTime() || 0, this.yt.getDuration() || 0];
+    if (this.engine === "sc") return [this.scPos || 0, this.scDur || 0];
     if (this.engine === "audio") return [this.audio.currentTime || 0, this.audio.duration];
     return [0, 0];
   },
   seek(t) {
     if (this.engine === "yt" && this.ytReady) this.yt.seekTo(t, true);
+    else if (this.engine === "sc" && this.sc) { try { this.sc.seekTo(t * 1000); this.scPos = t; } catch { } }
     else if (this.engine === "audio" && isFinite(this.audio.duration)) this.audio.currentTime = t;
   },
-  resume() { if (this.engine === "yt" && this.ytReady) this.yt.playVideo(); else if (this.engine === "audio") this.audio.play().catch(() => { }); },
-  pause() { if (this.engine === "yt" && this.ytReady) this.yt.pauseVideo(); else if (this.engine === "audio") this.audio.pause(); },
+  resume() { if (this.engine === "yt" && this.ytReady) this.yt.playVideo(); else if (this.engine === "sc" && this.sc) { try { this.sc.play(); } catch { } } else if (this.engine === "audio") this.audio.play().catch(() => { }); },
+  pause() { if (this.engine === "yt" && this.ytReady) this.yt.pauseVideo(); else if (this.engine === "sc" && this.sc) { try { this.sc.pause(); } catch { } } else if (this.engine === "audio") this.audio.pause(); },
   toggle() {
     if (!this.cur) return toast("Pilih lagu atau stasiun radio dulu.");
     this.playing ? this.pause() : this.resume();
@@ -802,6 +919,7 @@ const Player = {
   applyVol() {
     const v = this.muted ? 0 : this.vol;
     this.audio.volume = v / 100;
+    if (this.sc) { try { this.sc.setVolume(v); } catch { } }
     if (this.ytReady) { this.yt.setVolume(this.vol); this.muted ? this.yt.mute() : this.yt.unMute(); }
     $("#volIco").setAttribute("href", v === 0 ? "#i-mute" : "#i-vol");
     $("#vol").value = this.vol;
@@ -861,7 +979,7 @@ document.addEventListener("keydown", e => {
 // Lembar "sedang diputar" di HP + video mengambang
 let sheetOpen = false;
 function setSheet(on) { sheetOpen = on && isMobile(); document.body.classList.toggle("sheet-open", sheetOpen); updatePip(); if (sheetOpen) Lyrics.scrollTo(true); }
-function updatePip() { $("#ytWrap").classList.toggle("pip", isMobile() && !sheetOpen && Player.engine === "yt"); }
+function updatePip() { $("#ytWrap").classList.toggle("pip", isMobile() && !sheetOpen && (Player.engine === "yt" || Player.engine === "sc")); }
 $("#barTrack").onclick = () => { if (isMobile()) setSheet(!sheetOpen); };
 $("#lyBtn").onclick = () => setSheet(!sheetOpen);
 $("#nowClose").onclick = () => setSheet(false);
@@ -906,7 +1024,7 @@ const Lyrics = {
     let title = it.title || "", artist = it.artist || "";
     title = title.replace(/[\(\[][^\)\]]*[\)\]]/g, " ").replace(/\b(feat|ft)\.?\s.*$/i, "").replace(/\s{2,}/g, " ").trim();
     artist = artist.replace(/\s*(,|&| x | feat\.?| ft\.?).*$/i, "").trim();
-    if (it.kind === "local") { const m = title.match(/^(.+?)\s+[-–]\s+(.+)$/); if (m) { artist = m[1]; title = m[2]; } else artist = ""; }
+    if (it.kind === "local" || it.kind === "sc") { const m = title.match(/^(.+?)\s+[-–]\s+(.+)$/); if (m) { artist = m[1]; title = m[2]; } else if (it.kind === "local") artist = ""; }
     return { title, artist };
   },
   async load(it) {
