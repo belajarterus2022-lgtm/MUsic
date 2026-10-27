@@ -6,7 +6,7 @@
 <!-- Pemblokir iklan & skrip asing: hanya skrip dan pemutar (iframe) dari layanan yang memang dipakai aplikasi yang boleh dimuat.
      Iklan sisipan, banner, atau pemutar dari domain lain diblokir browser. Lihat README bagian "Iklan". -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://www.youtube.com https://s.ytimg.com https://w.soundcloud.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https: data: blob:; media-src 'self' https: blob:; connect-src 'self' https: wss:; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://w.soundcloud.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-<meta name="theme-color" content="#121826">
+<meta name="theme-color" content="#F5F3FD">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Music">
@@ -49,6 +49,8 @@
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
     <symbol id="i-queue" viewBox="0 0 24 24"><path d="M3 6h13M3 12h13M3 18h8M18 15v6M15 18h6"/></symbol>
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     <symbol id="i-move" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m11 10 3 3-3 3M8 13h6"/></symbol>
   </defs>
@@ -101,7 +103,10 @@
   <header class="top">
     <div class="top-in">
       <div class="brand"><span class="brand-mark"></span>Live Music</div>
-      <button class="acct" id="acctBtn" aria-haspopup="true"><span class="avatar" id="avatar">?</span><span class="acct-name" id="acctName"></span><svg class="i sm"><use href="#i-down"/></svg></button>
+      <div class="top-actions">
+        <button class="icon-btn plain" id="themeBtn" type="button" aria-label="Ganti ke tema gelap" title="Ganti ke tema gelap"><svg class="i"><use href="#i-moon" id="themeIco"/></svg></button>
+        <button class="acct" id="acctBtn" aria-haspopup="true"><span class="avatar" id="avatar">?</span><span class="acct-name" id="acctName"></span><svg class="i sm"><use href="#i-down"/></svg></button>
+      </div>
     </div>
   </header>
 
@@ -116,7 +121,7 @@
     <main class="main">
       <!-- CARI -->
       <section class="view" data-view="search">
-        <h1 class="view-title">Cari lagu</h1>
+        <header class="view-head"><h1 class="view-title">Cari lagu</h1><p class="view-sub">Lagu penuh dari YouTube, SoundCloud, Audius, dan Internet Archive.</p></header>
         <div class="search-head">
           <form class="searchbox" id="searchForm" role="search">
             <svg class="i"><use href="#i-search"/></svg>
@@ -158,7 +163,7 @@
 
       <!-- RADIO -->
       <section class="view" data-view="radio" hidden>
-        <h1 class="view-title">Radio Indonesia</h1>
+        <header class="view-head"><h1 class="view-title">Radio Indonesia</h1><p class="view-sub">Stasiun dari seluruh Indonesia yang sedang siaran.</p></header>
         <div class="radio-tools">
           <div class="searchbox slim"><svg class="i"><use href="#i-search"/></svg><input id="rq" type="search" placeholder="Nama stasiun atau kota"></div>
           <select id="rProv" aria-label="Provinsi"><option value="">Semua daerah</option></select>
@@ -174,7 +179,7 @@
 
       <!-- FAVORIT -->
       <section class="view" data-view="favs" hidden>
-        <h1 class="view-title">Favorit</h1>
+        <header class="view-head"><h1 class="view-title">Favorit</h1><p class="view-sub">Tersimpan di akun Anda, bisa dibuka dari perangkat mana pun.</p></header>
         <div id="importBox" class="notice" hidden></div>
         <div class="folder-bar">
           <div class="chips scroll" id="folderChips"></div>
@@ -193,8 +198,7 @@
 
       <!-- LOKAL -->
       <section class="view" data-view="local" hidden>
-        <h1 class="view-title">File lokal</h1>
-        <p class="muted">Putar file musik dari perangkat ini. File tidak diunggah ke mana pun dan tidak ikut tersimpan di akun.</p>
+        <header class="view-head"><h1 class="view-title">File lokal</h1><p class="view-sub">Putar file musik dari perangkat ini. File tidak diunggah ke mana pun dan tidak ikut tersimpan di akun.</p></header>
         <button class="btn ghost" id="pick"><svg class="i"><use href="#i-file"/></svg>Pilih file musik</button>
         <input type="file" id="files" accept="audio/*" multiple hidden>
         <div class="list" id="tracks"></div>

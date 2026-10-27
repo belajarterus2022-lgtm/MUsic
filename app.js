@@ -27,7 +27,7 @@ function el(tag, attrs, ...kids) {
     else if (k === "text") e.textContent = v;
     else if (k.startsWith("on") && typeof v === "function") e.addEventListener(k.slice(2), v);
     else if (k === "style") e.style.cssText = v;
-    else e.setAttribute(k, v === true ? "" : v);
+    else e.setAttribute(k, v === true ? (k.startsWith("aria-") ? "true" : "") : v);
   }
   for (const c of kids.flat()) if (c != null && c !== false) e.append(c);
   return e;
@@ -50,6 +50,21 @@ function toast(msg, ms = 3200) { const t = $("#toast"); t.textContent = msg; t.c
 let statusT;
 function status(msg, ms = 0) { $("#status").textContent = msg || ""; clearTimeout(statusT); if (msg && ms) statusT = setTimeout(() => status(""), ms); }
 const decodeHtml = s => { const t = document.createElement("textarea"); t.innerHTML = s; return t.value; };
+
+/* ---------------------------------------------------------------------
+   Tema: cerah (bawaan) atau gelap, tersimpan di perangkat ini
+--------------------------------------------------------------------- */
+function applyTheme(t) {
+  const dark = t === "dark";
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = dark ? "#120F26" : "#F5F3FD";
+  const b = $("#themeBtn"); if (!b) return;
+  const lbl = dark ? "Ganti ke tema cerah" : "Ganti ke tema gelap";
+  b.setAttribute("aria-label", lbl); b.title = lbl;
+  $("#themeIco").setAttribute("href", dark ? "#i-sun" : "#i-moon");
+}
+applyTheme(store.get("theme", "light"));
+$("#themeBtn").onclick = () => { const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; store.set("theme", t); applyTheme(t); };
 
 /* ---------------------------------------------------------------------
    Dialog sederhana (pengganti prompt/confirm)
