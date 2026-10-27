@@ -51,6 +51,7 @@
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6z"/><path d="m8.8 12.2 2.3 2.3 4.2-4.4"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     <symbol id="i-move" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m11 10 3 3-3 3M8 13h6"/></symbol>
   </defs>
@@ -103,6 +104,19 @@
   <header class="top">
     <div class="top-in">
       <div class="brand"><span class="brand-mark"></span>Live Music</div>
+      <!-- Menu cepat: ikon cari (membuka kolom ketik kecil), riwayat, radio, favorit -->
+      <nav class="quick" id="quick" aria-label="Menu cepat">
+        <form class="qsearch" id="searchForm" role="search">
+          <button type="button" class="q-open" id="qOpen" aria-label="Cari lagu" title="Cari lagu" aria-expanded="false" aria-controls="q"><svg class="i"><use href="#i-search"/></svg></button>
+          <input id="q" type="search" list="sug" autocomplete="off" enterkeyhint="search" placeholder="Judul, penyanyi, atau link SoundCloud" aria-label="Cari lagu">
+          <datalist id="sug"></datalist>
+          <button class="btn primary q-go" type="submit">Cari</button>
+          <button type="button" class="icon-btn plain q-close" id="qClose" aria-label="Tutup kolom cari" title="Tutup"><svg class="i sm"><use href="#i-x"/></svg></button>
+        </form>
+        <button type="button" class="qchip" id="histBtn"><svg class="i"><use href="#i-clock"/></svg><span>Riwayat<span class="long"> lagu</span></span></button>
+        <button type="button" class="qchip" data-tab="radio"><svg class="i"><use href="#i-radio"/></svg>Radio</button>
+        <button type="button" class="qchip" data-tab="favs"><svg class="i"><use href="#i-heart"/></svg>Favorit</button>
+      </nav>
       <div class="top-actions">
         <button class="icon-btn plain" id="themeBtn" type="button" aria-label="Ganti ke tema gelap" title="Ganti ke tema gelap"><svg class="i"><use href="#i-moon" id="themeIco"/></svg></button>
         <button class="acct" id="acctBtn" aria-haspopup="true"><span class="avatar" id="avatar">?</span><span class="acct-name" id="acctName"></span><svg class="i sm"><use href="#i-down"/></svg></button>
@@ -121,16 +135,9 @@
     <main class="main">
       <!-- CARI -->
       <section class="view" data-view="search">
-        <header class="view-head"><h1 class="view-title">Cari lagu</h1><p class="view-sub">Lagu penuh dari YouTube, SoundCloud, Audius, dan Internet Archive.</p></header>
-        <div class="search-head">
-          <form class="searchbox" id="searchForm" role="search">
-            <svg class="i"><use href="#i-search"/></svg>
-            <input id="q" type="search" list="sug" autocomplete="off" enterkeyhint="search" placeholder="Judul, penyanyi, atau tempel link SoundCloud">
-            <datalist id="sug"></datalist>
-            <button class="icon-btn plain" type="button" id="histBtn" aria-label="Riwayat pencarian" title="Riwayat pencarian"><svg class="i"><use href="#i-clock"/></svg></button>
-            <button class="btn primary" type="submit">Cari</button>
-          </form>
-          <div class="seg small" id="srcSeg" role="group" aria-label="Sumber lagu">
+        <h1 class="sr-only">Cari lagu</h1>
+        <!-- Pilihan sumber disembunyikan dari tampilan; fungsinya tetap berjalan (sumber terakhir/“Semua sumber”) -->
+          <div class="seg small" id="srcSeg" role="group" aria-label="Sumber lagu" hidden>
             <button type="button" data-src="all" aria-pressed="true">Semua sumber</button>
             <button type="button" data-src="noads" title="Hanya Audius dan Internet Archive: diputar langsung tanpa iklan">Tanpa iklan</button>
             <button type="button" data-src="youtube">YouTube</button>
@@ -138,7 +145,6 @@
             <button type="button" data-src="audius">Audius</button>
             <button type="button" data-src="archive">Internet Archive</button>
           </div>
-        </div>
         <p class="count" id="scHint" hidden></p>
         <p class="count" id="count"></p>
         <div class="list" id="results"></div>
@@ -226,6 +232,7 @@
       <div class="now-modes">
         <button class="mode" id="shuffleBtn" aria-pressed="false"><svg class="i sm"><use href="#i-shuffle"/></svg>Acak</button>
         <button class="mode" id="repeatBtn" aria-pressed="false"><svg class="i sm"><use href="#i-repeat"/></svg><span id="repeatLbl">Ulangi: mati</span></button>
+        <button class="mode" id="adFreeBtn" aria-pressed="true" title="Lagu YouTube diputar sebagai audio saja: tanpa iklan dan tetap jalan saat layar terkunci"><svg class="i sm"><use href="#i-shield"/></svg>Tanpa iklan</button>
       </div>
       <section class="lyrics">
         <div class="lyrics-head"><h3>Lirik</h3><span id="lySrc"></span></div>
