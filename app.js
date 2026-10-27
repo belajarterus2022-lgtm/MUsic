@@ -234,6 +234,7 @@ function showView(name) {
   if (!$(`.view[data-view="${name}"]`)) name = "search";
   $$(".view").forEach(v => v.hidden = v.dataset.view !== name);
   $$("[data-tab]").forEach(b => b.setAttribute("aria-current", b.dataset.tab === name ? "page" : "false"));
+  $$("[data-hist]").forEach(b => b.setAttribute("aria-current", "false"));
   store.set("lastView", name);
   setSheet(false);
   if (name === "radio") Radio.ensure();
@@ -1029,15 +1030,20 @@ const History = {
 };
 // Mode "beranda" pencarian (saran + riwayat) vs mode hasil
 function setSearchHome(on) {
+  if (!on && !$('.view[data-view="search"]').hidden && $$("[data-hist]").some(b => b.getAttribute("aria-current") === "page")) { markHist(false); $$('[data-tab="search"]').forEach(b => b.setAttribute("aria-current", "page")); }
   $("#searchEmpty").hidden = !on; $("#history").hidden = !on;
   $("#results").hidden = on; $("#count").hidden = on;
   if (on) { $("#more").hidden = true; $("#scHint").hidden = true; History.render(); }
 }
 $("#hClear").onclick = () => History.clear();
-$("#histBtn").onclick = () => {
-  showView("search"); setSearchHome(true);
+function markHist(on) {
+  $$("[data-hist]").forEach(b => b.setAttribute("aria-current", on ? "page" : "false"));
+  if (on) $$('[data-tab="search"]').forEach(b => b.setAttribute("aria-current", "false"));
+}
+$$("[data-hist]").forEach(b => b.onclick = () => {
+  showView("search"); setSearchHome(true); markHist(true);
   requestAnimationFrame(() => $("#history").scrollIntoView({ block: "start" }));
-};
+});
 $("#q").addEventListener("input", () => { if (!$("#q").value.trim() && $("#history").hidden) setSearchHome(true); });
 
 // Saran nama penyanyi/judul saat mengetik (data katalog iTunes, tanpa audio)
@@ -1142,7 +1148,7 @@ const Player = {
   async playAt(i) {
     const it = this.list[i]; if (!it) return;
     this.i = i; this.cur = it; const tk = ++this.tok;
-    clearTimeout(this.ytT); if (!this._keepResume) this.resumeAt = 0; this._keepResume = false;
+    clearTimeout(this.ytT); if (!this._keepResume) this.resumeAt = 0; this._keepResume = false; FX.warm();
     showNow(it); markPlaying(); refreshHearts(); Lyrics.load(it);
     try {
       if (it.kind === "legacy") {
@@ -1171,7 +1177,7 @@ const Player = {
       }
       let src = it.src;
       if (it.kind === "archive" && !src) { status("Mengambil file audio…"); src = it.src = await archiveSrc(it.aid); if (tk !== this.tok) return; }
-      this.use("audio"); this.audio.src = src; status("Memuat…");
+      this.use("audio"); this.load(src); status("Memuat…");
       await this.audio.play();
     } catch (e) {
       if (tk !== this.tok) return;
@@ -1198,7 +1204,7 @@ const Player = {
     }
     this.ytCur = url; this.ytTried.add(url);
     this.resumeAt = pos > 1 ? pos : 0;
-    this.audio.src = url;
+    this.load(url);
     this.audio.play().catch(e => { if (e && e.name === "NotAllowedError" && tk === this.tok) { this.setPlaying(false); status("Tekan tombol putar untuk mulai.", 4000); } });
     // sumber yang tidak mulai berbunyi dalam 8 detik dilewati
     this.ytT = setTimeout(() => { if (tk === this.tok && this.engine === "audio" && !this.ytStarted && !this.audio.paused) this.ytNextSrc(tk); }, 8000);
@@ -1228,14 +1234,14 @@ const Player = {
     if (this.cur && this.cur.kind === "yt" && this.i >= 0) { const [c] = this.time(); this.resumeAt = c > 1 ? c : 0; this._keepResume = true; this.playAt(this.i); }
   },
   playRadio(st) {
-    this.list = []; this.i = -1; this.tok++;
+    this.list = []; this.i = -1; this.tok++; FX.warm();
     this.cur = { kind: "radio", uuid: st.uuid, title: st.name, artist: [st.city, st.genre].filter(Boolean).join(", ") || "Radio Indonesia", art: st.favicon, station: st };
     showNow(this.cur); markPlaying(); refreshHearts(); Lyrics.load(this.cur);
-    this.use("audio"); this.audio.src = st.url; status("Menghubungkan ke " + st.name + "…");
+    this.use("audio"); this.load(st.url); status("Menghubungkan ke " + st.name + "…");
     this.audio.play().catch(e => { if (e && e.name === "NotAllowedError") { this.setPlaying(false); status("Tekan tombol putar untuk mulai.", 4000); } });
   },
   onPlaying() {
-    this.errRun = 0; this.setPlaying(true); status("");
+    this.errRun = 0; this.setPlaying(true); status(""); FX.render();
     if (this.engine === "audio" && this.cur && this.cur.kind === "yt") {
       this.ytStarted = true; this.ytEver = true; clearTimeout(this.ytT);
       const f = this.ytRes && this.ytRes.from[this.ytCur]; if (f) YtAudio.setGood(f[0], f[1]); // ingat server tercepat
@@ -1298,11 +1304,30 @@ const Player = {
   pause() { if (this.engine === "yt" && this.ytReady) this.yt.pauseVideo(); else if (this.engine === "sc" && this.sc) { try { this.sc.pause(); } catch { } } else if (this.engine === "audio") this.audio.pause(); },
   toggle() {
     if (!this.cur) return toast("Pilih lagu atau stasiun radio dulu.");
-    this.playing ? this.pause() : this.resume();
+    FX.warm(); this.playing ? this.pause() : this.resume();
+  },
+  // Pasang sumber audio pada elemen yang tepat: jalur efek suara (bila aktif & sumber mengizinkan) atau jalur biasa.
+  load(url) {
+    const el = FX.pick(url);
+    if (el !== this.audio) { const old = this.audio; this.audio = el; try { old.pause(); old.removeAttribute("src"); old.load(); } catch { } }
+    el.src = url; FX.warm();
+    if (el !== FX.el) FX.maybeUpgrade(); else FX.render();
+    return el;
+  },
+  // Pindahkan lagu yang sedang berjalan ke elemen lain (mengaktifkan/mematikan efek) tanpa mengulang dari awal.
+  swap(to) {
+    const from = this.audio; if (!to || from === to) return;
+    const url = from.getAttribute("src"); if (!url) { this.audio = to; return; }
+    const t = from.currentTime || 0, live = !isFinite(from.duration), wasPlaying = !from.paused;
+    this.audio = to; this.resumeAt = !live && t > 1 ? t : 0;
+    to.src = url;
+    try { from.pause(); from.removeAttribute("src"); from.load(); } catch { }
+    if (wasPlaying) to.play().catch(() => { });
+    this.applyVol(); FX.render();
   },
   applyVol() {
     const v = this.muted ? 0 : this.vol;
-    this.audio.volume = v / 100;
+    [this.plain, FX.el].forEach(e => { if (e) e.volume = v / 100; });
     if (this.sc) { try { this.sc.setVolume(v); } catch { } }
     if (this.ytReady) { this.yt.setVolume(this.vol); this.muted ? this.yt.mute() : this.yt.unMute(); }
     $("#volIco").setAttribute("href", v === 0 ? "#i-mute" : "#i-vol");
@@ -1310,22 +1335,197 @@ const Player = {
   },
   stop() { this.tok++; this.pause(); this.use(null); this.cur = null; this.list = []; this.setPlaying(false); }
 };
-const A = Player.audio; A.preload = "none";
-// Elemen audio dipasang di halaman (beberapa browser HP lebih andal memutar di latar belakang),
-// dan sesi audio iPhone diset "playback" agar tetap berbunyi saat layar terkunci.
-A.setAttribute("playsinline", ""); A.hidden = true; document.body.append(A);
+const A = Player.audio; Player.plain = A;
 try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch { }
-A.addEventListener("playing", () => Player.engine === "audio" && Player.onPlaying());
-A.addEventListener("pause", () => Player.engine === "audio" && Player.setPlaying(false));
-A.addEventListener("waiting", () => Player.engine === "audio" && status("Memuat…"));
-A.addEventListener("ended", () => Player.engine === "audio" && Player.onEnded());
-A.addEventListener("error", () => {
-  if (Player.engine !== "audio" || !A.getAttribute("src")) return;
-  if (Player.cur && Player.cur.kind === "yt") return Player.ytNextSrc(); // server audio YouTube gagal: coba server lain
-  Player.onError("Sumber audio tidak bisa diputar.");
+// Kedua elemen audio (jalur biasa & jalur efek) memakai pengendali yang sama; hanya elemen aktif yang dihitung.
+function wireAudio(el) {
+  el.preload = "none";
+  // dipasang di halaman (beberapa browser HP lebih andal memutar di latar belakang)
+  el.setAttribute("playsinline", ""); el.hidden = true; document.body.append(el);
+  const on = () => Player.engine === "audio" && Player.audio === el;
+  el.addEventListener("playing", () => on() && Player.onPlaying());
+  el.addEventListener("pause", () => on() && Player.setPlaying(false));
+  el.addEventListener("waiting", () => on() && status("Memuat…"));
+  el.addEventListener("ended", () => on() && Player.onEnded());
+  el.addEventListener("error", () => {
+    if (!on() || !el.getAttribute("src")) return;
+    // jalur efek gagal: kemungkinan sumber tidak mengizinkan pengolahan suara → putar lewat jalur biasa
+    if (el === FX.el) { FX.markCors(el.getAttribute("src"), false); return Player.swap(Player.plain); }
+    if (Player.cur && Player.cur.kind === "yt") return Player.ytNextSrc(); // server audio YouTube gagal: coba server lain
+    Player.onError("Sumber audio tidak bisa diputar.");
+  });
+  // lanjutkan dari posisi terakhir saat berpindah server / jalur / mode
+  el.addEventListener("loadedmetadata", () => { if (on() && Player.resumeAt > 0) { try { el.currentTime = Player.resumeAt; } catch { } Player.resumeAt = 0; } });
+}
+wireAudio(A);
+
+/* =====================================================================
+   EFEK SUARA (Web Audio): bass, bass dalam, vokal, treble, surround, gema,
+   penguat, dan koreksi speaker. Suara benar-benar diolah sebelum keluar.
+   Berlaku untuk lagu yang diputar pemutar audio aplikasi: YouTube (mode
+   Tanpa iklan), Audius, Internet Archive, file lokal, dan radio yang
+   mengizinkan. Pemutar resmi YouTube/SoundCloud (iframe) tidak bisa diolah.
+===================================================================== */
+const FX_PRESETS = {
+  normal:  { label: "Normal",       sub: 0,  bass: 0,  vocal: 0,  treble: 0,  width: 50, room: 0,  boost: 0 },
+  bass:    { label: "Bass Boost",   sub: 6,  bass: 6,  vocal: 0,  treble: 1,  width: 50, room: 0,  boost: 0 },
+  film:    { label: "Bass Film",    sub: 9,  bass: 5,  vocal: 1,  treble: 2,  width: 82, room: 18, boost: 2 },
+  deep:    { label: "Bass Dalam",   sub: 11, bass: 3,  vocal: -1, treble: 0,  width: 55, room: 0,  boost: 1 },
+  konser:  { label: "Konser",       sub: 3,  bass: 2,  vocal: 1,  treble: 2,  width: 78, room: 42, boost: 1 },
+  vokal:   { label: "Vokal Jernih", sub: -2, bass: -1, vocal: 5,  treble: 2,  width: 50, room: 0,  boost: 1 },
+  treble:  { label: "Treble",       sub: 0,  bass: -2, vocal: 2,  treble: 8,  width: 55, room: 0,  boost: 0 },
+  pop:     { label: "Pop",          sub: 2,  bass: 2,  vocal: 2,  treble: 3,  width: 60, room: 8,  boost: 0 },
+  rock:    { label: "Rock",         sub: 4,  bass: 3,  vocal: -1, treble: 4,  width: 62, room: 6,  boost: 1 },
+  dangdut: { label: "Dangdut",      sub: 5,  bass: 4,  vocal: 3,  treble: 1,  width: 56, room: 10, boost: 1 },
+  jazz:    { label: "Jazz",         sub: 2,  bass: 2,  vocal: 1,  treble: 2,  width: 62, room: 16, boost: 0 },
+  santai:  { label: "Santai",       sub: 2,  bass: 1,  vocal: -1, treble: -3, width: 52, room: 6,  boost: 0 }
+};
+// Koreksi menurut perangkat keluaran suara
+const FX_SPEAKERS = {
+  datar:    { label: "Datar",        hp: 20,  low: 0, high: 0,  comp: 0 },
+  hp:       { label: "Speaker HP",   hp: 110, low: 4, high: 3,  comp: 1 }, // speaker HP tak bisa memutar <100 Hz: dibuang agar lebih keras & jernih
+  earphone: { label: "Earphone",     hp: 20,  low: 1, high: -1, comp: 0 },
+  luar:     { label: "Speaker luar", hp: 35,  low: 2, high: 1,  comp: 0 }  // Bluetooth/aktif: lindungi speaker dari frekuensi sangat rendah
+};
+const FX_SLIDERS = [
+  { k: "sub", label: "Bass dalam", min: 0, max: 12, unit: " dB" },
+  { k: "bass", label: "Bass", min: -12, max: 12, unit: " dB" },
+  { k: "vocal", label: "Vokal", min: -12, max: 12, unit: " dB" },
+  { k: "treble", label: "Treble", min: -12, max: 12, unit: " dB" },
+  { k: "width", label: "Surround", min: 0, max: 100, unit: "%" },
+  { k: "room", label: "Gema", min: 0, max: 100, unit: "%" },
+  { k: "boost", label: "Penguat", min: 0, max: 9, unit: " dB" }
+];
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const FX = {
+  ctx: null, el: null, n: null, bgSwap: false, probing: new Map(),
+  cors: Object.assign({}, store.get("fxCors:v1", {})),
+  set: Object.assign({ on: true, preset: "normal", speaker: "datar" }, FX_PRESETS.normal, store.get("fx:v1", {})),
+  values() { return this.set; },
+  // Efek benar-benar dipakai? (Normal + Datar = jalur biasa, 100% sama seperti tanpa efek)
+  active() {
+    const s = this.set, z = FX_PRESETS.normal;
+    return !!s.on && (s.speaker !== "datar" || FX_SLIDERS.some(d => +s[d.k] !== z[d.k]));
+  },
+  save() { store.set("fx:v1", this.set); },
+  origin(url) { try { return new URL(url, location.href).origin; } catch { return ""; } },
+  sameOrigin(url) { return /^blob:/.test(url) || this.origin(url) === location.origin; },
+  corsOk(url) { return this.sameOrigin(url) ? true : this.cors[this.origin(url)]; },
+  markCors(url, ok) { const o = this.origin(url); if (!o) return; this.cors[o] = ok; store.set("fxCors:v1", this.cors); this.render(); },
+  // Cek apakah sumber mengizinkan suaranya diolah (CORS). Hasil disimpan per server.
+  async probe(url) {
+    const known = this.corsOk(url); if (known !== undefined) return known;
+    const o = this.origin(url); if (this.probing.has(o)) return this.probing.get(o);
+    const p = (async () => {
+      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 5000);
+      try { await fetch(url, { mode: "cors", cache: "no-store", signal: ctl.signal }); ctl.abort(); this.markCors(url, true); return true; }
+      catch (e) { if (e && e.name === "AbortError" && this.cors[o] === undefined) return false; this.markCors(url, false); return false; }
+      finally { clearTimeout(t); this.probing.delete(o); }
+    })();
+    this.probing.set(o, p); return p;
+  },
+  // Siapkan pengolah suara (dipanggil dari tindakan pengguna agar browser mengizinkan)
+  ensure() {
+    if (this.ctx) return true;
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
+    try { this.ctx = new AC({ latencyHint: "playback" }); } catch { try { this.ctx = new AC(); } catch { return false; } }
+    const c = this.ctx, el = this.el = new Audio(); el.crossOrigin = "anonymous"; wireAudio(el);
+    const n = this.n = {};
+    n.src = c.createMediaElementSource(el);
+    n.pre = c.createGain();
+    n.stereo = c.createGain(); n.stereo.channelCount = 2; n.stereo.channelCountMode = "explicit"; n.stereo.channelInterpretation = "speakers"; // mono → stereo
+    const bq = (type, f, q) => { const b = c.createBiquadFilter(); b.type = type; b.frequency.value = f; if (q) b.Q.value = q; return b; };
+    n.hp = bq("highpass", 20, .707); n.hp2 = bq("highpass", 20, .707); // dua tingkat: potongan frekuensi rendah lebih bersih
+    n.sub = bq("peaking", 55, 1.1);
+    n.bass = bq("lowshelf", 150);
+    n.spkLow = bq("peaking", 220, 1);
+    n.vocal = bq("peaking", 2500, .9);
+    n.spkHigh = bq("peaking", 3800, 1);
+    n.treble = bq("highshelf", 8500);
+    // surround: pelebaran stereo (mid/side)
+    n.split = c.createChannelSplitter(2); n.merge = c.createChannelMerger(2);
+    n.ll = c.createGain(); n.lr = c.createGain(); n.rl = c.createGain(); n.rr = c.createGain();
+    // gema: ruang buatan (impuls disintesis)
+    n.dry = c.createGain(); n.wet = c.createGain(); n.verb = c.createConvolver(); n.verb.buffer = this.impulse(c, 2.2);
+    n.sum = c.createGain();
+    n.comp = c.createDynamicsCompressor(); // pembatas: mencegah suara pecah saat bass/penguat dinaikkan
+    n.an = c.createAnalyser(); n.an.fftSize = 2048; n.an.smoothingTimeConstant = .75;
+    n.src.connect(n.pre).connect(n.stereo).connect(n.hp).connect(n.hp2).connect(n.sub).connect(n.bass).connect(n.spkLow).connect(n.vocal).connect(n.spkHigh).connect(n.treble).connect(n.split);
+    n.split.connect(n.ll, 0); n.split.connect(n.lr, 0); n.split.connect(n.rl, 1); n.split.connect(n.rr, 1);
+    n.ll.connect(n.merge, 0, 0); n.rl.connect(n.merge, 0, 0); n.lr.connect(n.merge, 0, 1); n.rr.connect(n.merge, 0, 1);
+    n.merge.connect(n.dry).connect(n.sum); n.merge.connect(n.verb).connect(n.wet).connect(n.sum);
+    n.sum.connect(n.comp).connect(n.an).connect(c.destination);
+    c.onstatechange = () => this.guardBackground();
+    this.apply(true); Player.applyVol();
+    return true;
+  },
+  impulse(c, sec) {
+    const len = Math.floor(c.sampleRate * sec), b = c.createBuffer(2, len, c.sampleRate);
+    for (let ch = 0; ch < 2; ch++) { const d = b.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2); }
+    return b;
+  },
+  warm() { if (this.active() && this.ensure() && this.ctx.state !== "running") this.ctx.resume().catch(() => { }); },
+  apply(now) {
+    if (!this.n) return;
+    const s = this.set, sp = FX_SPEAKERS[s.speaker] || FX_SPEAKERS.datar, n = this.n, t = this.ctx.currentTime;
+    const to = (p, v) => now ? p.setValueAtTime(v, t) : p.setTargetAtTime(v, t, .04);
+    const db = v => Math.pow(10, v / 20);
+    to(n.pre.gain, db(+s.boost));
+    to(n.hp.frequency, sp.hp); to(n.hp2.frequency, sp.hp);
+    to(n.sub.gain, +s.sub); to(n.bass.gain, +s.bass); to(n.vocal.gain, +s.vocal); to(n.treble.gain, +s.treble);
+    to(n.spkLow.gain, sp.low); to(n.spkHigh.gain, sp.high);
+    const w = .2 + (+s.width / 100) * 1.6; // 0% → 0.2 (hampir mono), 50% → 1.0 (asli), 100% → 1.8 (lebar)
+    to(n.ll.gain, (1 + w) / 2); to(n.rr.gain, (1 + w) / 2); to(n.lr.gain, (1 - w) / 2); to(n.rl.gain, (1 - w) / 2);
+    const r = +s.room / 100; to(n.wet.gain, r * .55); to(n.dry.gain, 1 - r * .25);
+    const hard = sp.comp || +s.boost > 0;
+    to(n.comp.threshold, hard ? -14 : -3); to(n.comp.ratio, hard ? 6 : 20); to(n.comp.knee, hard ? 8 : 2);
+    n.comp.attack.value = .003; n.comp.release.value = .25;
+  },
+  // Pindahkan lagu yang sedang diputar ke jalur efek bila efek aktif & sumber mengizinkan
+  async maybeUpgrade() {
+    if (!this.active() || Player.engine !== "audio" || Player.audio === this.el || document.hidden) return this.render();
+    const url = Player.audio.getAttribute("src"); if (!url) return;
+    if (!this.ensure()) return this.render();
+    if (this.ctx.state !== "running") { try { await this.ctx.resume(); } catch { } }
+    this.render("Menyiapkan efek…");
+    const ok = await this.probe(url);
+    if (!ok || this.ctx.state !== "running" || !this.active() || Player.audio.getAttribute("src") !== url || Player.audio === this.el) return this.render();
+    Player.swap(this.el);
+  },
+  maybeDowngrade() { if (!this.active() && Player.audio === this.el) Player.swap(Player.plain); },
+  pick(url) {
+    if (this.active() && this.ctx && this.ctx.state === "running" && this.corsOk(url) === true && !document.hidden) return this.el;
+    return Player.plain;
+  },
+  // Latar belakang: bila pengolah suara dihentikan sistem (mis. iPhone terkunci), lagu dipindah ke jalur biasa agar tetap berbunyi.
+  guardBackground() {
+    if (Player.audio !== this.el || !Player.playing) return;
+    if (document.hidden && (isIOS || (this.ctx && this.ctx.state !== "running"))) { this.bgSwap = true; Player.swap(Player.plain); }
+  },
+  update(patch) {
+    Object.assign(this.set, patch); this.save(); this.apply();
+    if (this.active()) this.maybeUpgrade(); else this.maybeDowngrade();
+    this.renderPanel();
+  },
+  status() {
+    const c = Player.cur;
+    if (!this.set.on) return ["Efek suara dimatikan.", ""];
+    if (!this.active()) return ["Pilih preset atau geser pengaturan untuk mengubah suara.", ""];
+    if (!c) return ["Efek akan diterapkan pada lagu yang Anda putar.", ""];
+    if (Player.engine === "yt") return ["Lagu ini diputar lewat pemutar YouTube resmi, jadi efek tidak bisa diterapkan. Nyalakan “Tanpa iklan” agar efek bekerja.", "warn"];
+    if (Player.engine === "sc") return ["Lagu SoundCloud diputar lewat widget resmi SoundCloud, jadi efek tidak bisa diterapkan.", "warn"];
+    if (Player.audio === this.el) return ["Efek aktif pada lagu ini.", "ok"];
+    const url = Player.audio.getAttribute("src");
+    if (url && this.corsOk(url) === false) return ["Sumber lagu ini tidak mengizinkan suaranya diolah, jadi lagu diputar tanpa efek.", "warn"];
+    return [this._msg || "Menyiapkan efek…", ""];
+  },
+  render(msg) { this._msg = msg || ""; const [t, cls] = this.status(); const e = $("#fxStatus"); if (e) { e.textContent = t; e.className = "fx-status " + cls; } updateFxChip(); }
+};
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) FX.guardBackground();
+  else { if (FX.ctx && FX.ctx.state !== "running" && FX.active()) FX.ctx.resume().catch(() => { }); if (FX.bgSwap) { FX.bgSwap = false; FX.maybeUpgrade(); } }
 });
-// lanjutkan dari posisi terakhir saat berpindah server / mengganti mode
-A.addEventListener("loadedmetadata", () => { if (Player.engine === "audio" && Player.resumeAt > 0) { try { A.currentTime = Player.resumeAt; } catch { } Player.resumeAt = 0; } });
+
 function stopAll() { Player.stop(); showNow(null); }
 
 function showNow(it) {
@@ -1602,6 +1802,71 @@ $("#files").onchange = e => {
 document.addEventListener("securitypolicyviolation", e => {
   console.info("[Pemblokir] Diblokir:", e.blockedURI || "(inline)", "aturan:", e.effectiveDirective);
 });
+
+/* ---------------------------------------------------------------------
+   Panel pengaturan efek suara
+--------------------------------------------------------------------- */
+function updateFxChip() {
+  const b = $("#fxBtn"); if (!b) return;
+  const s = FX.set, on = FX.active();
+  const name = !s.on ? "" : (FX_PRESETS[s.preset] ? FX_PRESETS[s.preset].label : "Kustom");
+  $("#fxChipVal").textContent = on ? ": " + (s.preset === "normal" ? FX_SPEAKERS[s.speaker].label : name) : "";
+  b.classList.toggle("on", on);
+}
+FX.renderPanel = function () {
+  const s = this.set;
+  $("#fxOn").checked = !!s.on; $("#fxOnLbl").textContent = s.on ? "Aktif" : "Mati";
+  $("#fxPanel").classList.toggle("off", !s.on);
+  $$("#fxPresets button").forEach(b => b.setAttribute("aria-pressed", b.dataset.p === s.preset));
+  $$("#fxSpk button").forEach(b => b.setAttribute("aria-pressed", b.dataset.s === s.speaker));
+  FX_SLIDERS.forEach(d => {
+    const r = $(`#fx_${d.k}`); if (!r) return;
+    if (+r.value !== +s[d.k]) r.value = s[d.k];
+    const v = +s[d.k]; $(`#fxv_${d.k}`).textContent = (d.unit === " dB" && v > 0 ? "+" : "") + v + d.unit;
+    r.style.setProperty("--p", ((v - d.min) / (d.max - d.min) * 100) + "%");
+  });
+  this.render(this._msg);
+};
+Object.entries(FX_PRESETS).forEach(([k, p]) => $("#fxPresets").append(el("button", { type: "button", "data-p": k, text: p.label, onclick: () => { FX.ensure(); FX.update(Object.assign({ preset: k, on: true }, { sub: p.sub, bass: p.bass, vocal: p.vocal, treble: p.treble, width: p.width, room: p.room, boost: p.boost })); } })));
+$("#fxPresets").append(el("button", { type: "button", "data-p": "custom", text: "Kustom", disabled: true, title: "Muncul otomatis saat Anda menggeser pengaturan" }));
+Object.entries(FX_SPEAKERS).forEach(([k, p]) => $("#fxSpk").append(el("button", { type: "button", "data-s": k, text: p.label, onclick: () => { FX.ensure(); FX.update({ speaker: k, on: true }); } })));
+FX_SLIDERS.forEach(d => {
+  const r = el("input", { type: "range", id: `fx_${d.k}`, min: d.min, max: d.max, step: 1, value: FX.set[d.k], "aria-label": d.label });
+  r.oninput = () => { FX.ensure(); FX.update({ [d.k]: +r.value, preset: "custom", on: true }); };
+  $("#fxSliders").append(el("label", { class: "fx-row", for: `fx_${d.k}` }, el("span", { class: "fx-lbl", text: d.label }), r, el("span", { class: "fx-val", id: `fxv_${d.k}` })));
+});
+$("#fxOn").onchange = e => { FX.ensure(); FX.update({ on: e.target.checked }); };
+$("#fxReset").onclick = () => { FX.ensure(); FX.update(Object.assign({ preset: "normal", speaker: "datar", on: true }, (({ label, ...v }) => v)(FX_PRESETS.normal))); };
+let fxRaf = 0;
+function fxDraw() {
+  const cv = $("#fxViz"), g = cv.getContext("2d"), W = cv.width, H = cv.height;
+  g.clearRect(0, 0, W, H);
+  const live = FX.n && Player.audio === FX.el && Player.playing;
+  const bars = 40, gap = 4, bw = (W - gap * (bars - 1)) / bars;
+  let data = null;
+  if (live) { data = new Uint8Array(FX.n.an.frequencyBinCount); FX.n.an.getByteFrequencyData(data); }
+  const grad = g.createLinearGradient(0, H, 0, 0); grad.addColorStop(0, "#E8336F"); grad.addColorStop(1, "#FFAE1F");
+  for (let i = 0; i < bars; i++) {
+    let v = .04;
+    if (data) { // skala logaritmik: 30 Hz … 16 kHz
+      const ny = FX.ctx.sampleRate / 2, f0 = 30 * Math.pow(16000 / 30, i / bars), f1 = 30 * Math.pow(16000 / 30, (i + 1) / bars);
+      const a = Math.floor(f0 / ny * data.length), b = Math.max(a + 1, Math.floor(f1 / ny * data.length));
+      let m = 0; for (let k = a; k < b && k < data.length; k++) m = Math.max(m, data[k]); v = Math.max(.04, m / 255);
+    }
+    g.fillStyle = live ? grad : "#A39CC255";
+    const h = v * H; g.beginPath(); g.roundRect ? g.roundRect(i * (bw + gap), H - h, bw, h, 3) : g.rect(i * (bw + gap), H - h, bw, h); g.fill();
+  }
+  fxRaf = !$("#fxPanel").hidden ? requestAnimationFrame(fxDraw) : 0;
+}
+function openFx(on) {
+  const p = $("#fxPanel"); p.hidden = !on; $("#fxBtn").setAttribute("aria-expanded", on);
+  if (on) { FX.renderPanel(); if (!fxRaf) fxRaf = requestAnimationFrame(fxDraw); }
+}
+$("#fxBtn").onclick = e => { e.stopPropagation(); openFx($("#fxPanel").hidden); };
+$("#fxClose").onclick = () => openFx(false);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#fxPanel").hidden) openFx(false); });
+document.addEventListener("pointerdown", e => { const p = $("#fxPanel"); if (!p.hidden && !p.contains(e.target) && !e.target.closest("#fxBtn")) openFx(false); });
+updateFxChip();
 
 /* =====================================================================
    MULAI

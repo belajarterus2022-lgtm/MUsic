@@ -51,6 +51,7 @@
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>
+    <symbol id="i-eq" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6z"/><path d="m8.8 12.2 2.3 2.3 4.2-4.4"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     <symbol id="i-move" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m11 10 3 3-3 3M8 13h6"/></symbol>
@@ -113,9 +114,7 @@
           <button class="btn primary q-go" type="submit">Cari</button>
           <button type="button" class="icon-btn plain q-close" id="qClose" aria-label="Tutup kolom cari" title="Tutup"><svg class="i sm"><use href="#i-x"/></svg></button>
         </form>
-        <button type="button" class="qchip" id="histBtn"><svg class="i"><use href="#i-clock"/></svg><span>Riwayat<span class="long"> lagu</span></span></button>
-        <button type="button" class="qchip" data-tab="radio"><svg class="i"><use href="#i-radio"/></svg>Radio</button>
-        <button type="button" class="qchip" data-tab="favs"><svg class="i"><use href="#i-heart"/></svg>Favorit</button>
+        <button type="button" class="qchip fx-chip" id="fxBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="fxPanel"><svg class="i"><use href="#i-eq"/></svg><span>Efek suara<span class="fx-chip-val" id="fxChipVal"></span></span></button>
       </nav>
       <div class="top-actions">
         <button class="icon-btn plain" id="themeBtn" type="button" aria-label="Ganti ke tema gelap" title="Ganti ke tema gelap"><svg class="i"><use href="#i-moon" id="themeIco"/></svg></button>
@@ -127,6 +126,7 @@
   <div class="shell">
     <nav class="side" aria-label="Menu">
       <button data-tab="search"><svg class="i"><use href="#i-search"/></svg>Cari lagu</button>
+      <button data-hist><svg class="i"><use href="#i-clock"/></svg>Riwayat lagu</button>
       <button data-tab="radio"><svg class="i"><use href="#i-radio"/></svg>Radio</button>
       <button data-tab="favs"><svg class="i"><use href="#i-heart"/></svg>Favorit</button>
       <button data-tab="local"><svg class="i"><use href="#i-file"/></svg>File lokal</button>
@@ -268,11 +268,30 @@
 
   <nav class="tabs" aria-label="Menu">
     <button data-tab="search"><svg class="i"><use href="#i-search"/></svg>Cari</button>
+    <button data-hist id="histBtn"><svg class="i"><use href="#i-clock"/></svg>Riwayat</button>
     <button data-tab="radio"><svg class="i"><use href="#i-radio"/></svg>Radio</button>
     <button data-tab="favs"><svg class="i"><use href="#i-heart"/></svg>Favorit</button>
     <button data-tab="local"><svg class="i"><use href="#i-file"/></svg>Lokal</button>
   </nav>
 </div>
+
+<!-- PENGATURAN EFEK SUARA -->
+<section class="fx-panel" id="fxPanel" role="dialog" aria-modal="false" aria-labelledby="fxTitle" hidden>
+  <div class="fx-head">
+    <h2 id="fxTitle">Efek suara</h2>
+    <label class="fx-switch"><input type="checkbox" id="fxOn"><span class="fx-track"></span><span class="fx-switch-lbl" id="fxOnLbl">Aktif</span></label>
+    <button class="icon-btn plain" id="fxClose" type="button" aria-label="Tutup pengaturan efek suara"><svg class="i sm"><use href="#i-x"/></svg></button>
+  </div>
+  <p class="fx-status" id="fxStatus" role="status" aria-live="polite"></p>
+  <canvas class="fx-viz" id="fxViz" width="600" height="96" aria-hidden="true"></canvas>
+  <h3 class="fx-sub">Preset</h3>
+  <div class="fx-presets" id="fxPresets"></div>
+  <h3 class="fx-sub">Speaker</h3>
+  <div class="seg fx-spk" id="fxSpk" role="group" aria-label="Jenis speaker"></div>
+  <h3 class="fx-sub">Atur sendiri</h3>
+  <div class="fx-sliders" id="fxSliders"></div>
+  <button class="btn ghost block" id="fxReset" type="button">Kembalikan ke Normal</button>
+</section>
 
 <dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

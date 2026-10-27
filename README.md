@@ -62,8 +62,16 @@ Ganti semua file lama di repo dengan file di folder ini, commit, lalu buka alama
 - **Sumber lain di latar belakang.** Audius, Internet Archive, radio, dan file lokal juga diputar oleh pemutar audio aplikasi, jadi tetap jalan saat layar terkunci. SoundCloud diputar lewat widget resmi SoundCloud; apakah widget itu tetap berbunyi saat layar terkunci ditentukan oleh SoundCloud dan browser HP.
 - **Pemblokir skrip iklan.** `index.html` memasang *Content-Security-Policy*: hanya skrip dari aplikasi ini, Supabase (jsDelivr), YouTube, dan SoundCloud, serta pemutar (iframe) YouTube dan SoundCloud yang boleh dimuat. Skrip iklan, banner, atau pop-up dari domain lain ditolak browser dan dicatat di konsol dengan awalan `[Pemblokir]`. Iklan dalam siaran radio adalah bagian dari siaran itu sendiri.
 
+## Efek suara (bass, speaker, surround)
+Tombol **Efek suara** ada di bagian paling atas. Suara benar-benar diolah oleh pengolah audio browser (Web Audio) sebelum keluar ke speaker, bukan sekadar tampilan; grafik spektrum di panel bergerak mengikuti suara yang sudah diolah.
+- **Preset:** Normal, Bass Boost, Bass Film, Bass Dalam, Konser, Vokal Jernih, Treble, Pop, Rock, Dangdut, Jazz, Santai.
+- **Speaker:** Datar, Speaker HP (membuang dengung di bawah 100 Hz yang tidak bisa diputar speaker HP sehingga suara lebih keras dan jernih), Earphone, Speaker luar (Bluetooth/aktif).
+- **Atur sendiri:** Bass dalam (60 Hz), Bass, Vokal, Treble, Surround (lebar stereo), Gema, Penguat. Pembatas otomatis mencegah suara pecah saat bass/penguat dinaikkan. Pengaturan tersimpan di perangkat.
+- **Berlaku untuk:** lagu YouTube (mode Tanpa iklan), Audius, Internet Archive, file lokal, dan radio yang mengizinkan. Tidak bisa untuk pemutar resmi YouTube/SoundCloud (berjalan di dalam iframe milik mereka). Sumber yang tidak mengizinkan suaranya diolah (sebagian radio) tetap diputar normal tanpa efek; panel memberi tahu.
+- **Latar belakang:** pilihan Normal + Datar memakai jalur biasa tanpa pengolahan. Bila sistem HP menghentikan pengolah suara saat layar terkunci (terutama iPhone), lagu otomatis dipindah ke jalur biasa agar tetap berbunyi, dan efek aktif kembali saat layar dibuka.
+
 ## Riwayat pencarian
-Setiap pencarian yang memberi hasil disimpan di `localStorage` browser (terpisah per akun, hanya di perangkat itu), lengkap dengan sampul, judul, penyanyi, durasi, sumber, dan waktu terakhir dicari. Ketuk kartu untuk mencari lagi dengan kata kunci dan sumber yang sama, atau tombol putar untuk memutar lagu yang tercatat. Bila lagu itu ternyata sudah tidak bisa diputar, kartunya ditandai dan tombol putar disembunyikan. Riwayat tampil saat kolom cari kosong atau lewat ikon jam di samping tombol Cari.
+Setiap pencarian yang memberi hasil disimpan di `localStorage` browser (terpisah per akun, hanya di perangkat itu), lengkap dengan sampul, judul, penyanyi, durasi, sumber, dan waktu terakhir dicari. Ketuk kartu untuk mencari lagi dengan kata kunci dan sumber yang sama, atau tombol putar untuk memutar lagu yang tercatat. Bila lagu itu ternyata sudah tidak bisa diputar, kartunya ditandai dan tombol putar disembunyikan. Buka lewat **Riwayat** di menu bawah (HP) atau menu samping (desktop); riwayat juga tampil saat kolom cari kosong.
 
 ## Pintasan keyboard
 Spasi: putar/jeda. Shift + →/←: lagu berikutnya/sebelumnya.
