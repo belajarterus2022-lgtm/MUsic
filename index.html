@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Pemblokir iklan & skrip asing: hanya skrip dan pemutar (iframe) dari layanan yang memang dipakai aplikasi yang boleh dimuat.
+     Iklan sisipan, banner, atau pemutar dari domain lain diblokir browser. Lihat README bagian "Iklan". -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://www.youtube.com https://s.ytimg.com https://w.soundcloud.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https: data: blob:; media-src 'self' https: blob:; connect-src 'self' https: wss:; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://w.soundcloud.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="theme-color" content="#121826">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -46,6 +49,7 @@
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
     <symbol id="i-queue" viewBox="0 0 24 24"><path d="M3 6h13M3 12h13M3 18h8M18 15v6M15 18h6"/></symbol>
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     <symbol id="i-move" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m11 10 3 3-3 3M8 13h6"/></symbol>
   </defs>
 </svg>
@@ -113,18 +117,22 @@
       <!-- CARI -->
       <section class="view" data-view="search">
         <h1 class="view-title">Cari lagu</h1>
-        <form class="searchbox" id="searchForm" role="search">
-          <svg class="i"><use href="#i-search"/></svg>
-          <input id="q" type="search" list="sug" autocomplete="off" enterkeyhint="search" placeholder="Judul, penyanyi, atau tempel link SoundCloud">
-          <datalist id="sug"></datalist>
-          <button class="btn primary" type="submit">Cari</button>
-        </form>
-        <div class="seg small" id="srcSeg" role="group" aria-label="Sumber lagu">
-          <button type="button" data-src="all" aria-pressed="true">Semua sumber</button>
-          <button type="button" data-src="youtube">YouTube</button>
-          <button type="button" data-src="soundcloud">SoundCloud</button>
-          <button type="button" data-src="audius">Audius</button>
-          <button type="button" data-src="archive">Internet Archive</button>
+        <div class="search-head">
+          <form class="searchbox" id="searchForm" role="search">
+            <svg class="i"><use href="#i-search"/></svg>
+            <input id="q" type="search" list="sug" autocomplete="off" enterkeyhint="search" placeholder="Judul, penyanyi, atau tempel link SoundCloud">
+            <datalist id="sug"></datalist>
+            <button class="icon-btn plain" type="button" id="histBtn" aria-label="Riwayat pencarian" title="Riwayat pencarian"><svg class="i"><use href="#i-clock"/></svg></button>
+            <button class="btn primary" type="submit">Cari</button>
+          </form>
+          <div class="seg small" id="srcSeg" role="group" aria-label="Sumber lagu">
+            <button type="button" data-src="all" aria-pressed="true">Semua sumber</button>
+            <button type="button" data-src="noads" title="Hanya Audius dan Internet Archive: diputar langsung tanpa iklan">Tanpa iklan</button>
+            <button type="button" data-src="youtube">YouTube</button>
+            <button type="button" data-src="soundcloud">SoundCloud</button>
+            <button type="button" data-src="audius">Audius</button>
+            <button type="button" data-src="archive">Internet Archive</button>
+          </div>
         </div>
         <p class="count" id="scHint" hidden></p>
         <p class="count" id="count"></p>
@@ -134,6 +142,18 @@
           <div class="chips" id="tryChips"></div>
         </div>
         <button class="btn ghost block" id="more" hidden>Muat lebih banyak</button>
+        <section class="history" id="history" aria-labelledby="hTitle">
+          <div class="history-head">
+            <div><h2 id="hTitle">Riwayat pencarian</h2><p class="count" id="hCount"></p></div>
+            <button class="btn ghost" type="button" id="hClear" hidden><svg class="i sm"><use href="#i-trash"/></svg>Hapus semua</button>
+          </div>
+          <div class="history-grid" id="hList"></div>
+          <div class="history-empty" id="hEmpty" hidden>
+            <span class="history-empty-mark"><svg class="i"><use href="#i-clock"/></svg></span>
+            <h3>Belum ada riwayat</h3>
+            <p>Lagu yang Anda cari akan muncul di sini lengkap dengan sampul dan info lagunya, jadi mudah dicari atau diputar lagi.</p>
+          </div>
+        </section>
       </section>
 
       <!-- RADIO -->

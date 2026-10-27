@@ -45,12 +45,22 @@ Ganti semua file lama di repo dengan file di folder ini, commit, lalu buka alama
 ## Yang perlu diketahui
 - **Lagu penuh saja.** Preview iTunes 30 detik sudah dihapus. Semua hasil di bawah 1 menit (preview, Shorts) disaring. iTunes hanya dipakai untuk saran nama saat mengetik.
 - **SoundCloud** ditambahkan sebagai sumber ke-4 (lihat bagian 3).
+- **Akurasi pencarian.** Sebuah hasil hanya ditampilkan bila semua kata penting dari kata kunci (nama artis, band, grup, atau judul) ada di artis, judul, atau album lagu itu. Kata umum seperti "lagu", "official", "terbaru", genre, dan tahun tidak wajib cocok. Cover, karaoke, remix, wawancara, dan sejenisnya dibuang kecuali kata itu ikut dicari. Salah ketik satu huruf pada kata panjang (mis. "amizha") dan nama tanpa spasi atau tanda baca (mis. "dmasiv", "sheilaon7") tetap dikenali. Bila hasil yang cocok sedikit, aplikasi otomatis mengambil hingga dua halaman tambahan.
 - **YouTube** diputar lewat player resmi YouTube, jadi videonya tampil di panel "Sedang diputar". Sebagian video resmi label melarang diputar di luar YouTube; aplikasi akan memberi tahu lalu melewati ke lagu berikutnya. Di HP, YouTube biasanya berhenti saat layar dikunci (aturan YouTube). Lagu dari Audius, Internet Archive, dan radio tetap jalan saat layar terkunci.
 - **Radio** diambil langsung dari direktori Radio Browser setiap kali dibuka, hanya stasiun yang lolos pengecekan aktif dan memakai HTTPS (stream HTTP diblokir browser di situs HTTPS). Stasiun yang ternyata tidak merespons ditandai redup.
 - **Lirik** dari LRCLIB. Jika tersedia versi tersinkron, baris yang sedang dinyanyikan disorot dan bisa diketuk untuk loncat ke bagian itu. Tidak semua lagu Indonesia punya lirik di LRCLIB; ada tautan "Cari lirik di Google".
 - **Favorit lama** di browser (versi sebelumnya) bisa dipindahkan ke akun lewat tombol yang muncul di halaman Favorit. Lagu lama dari iTunes otomatis dicarikan versi lengkapnya di YouTube saat diputar.
 - Proyek Supabase gratis akan dijeda bila tidak dipakai 7 hari; cukup buka dashboard Supabase dan tekan **Restore**.
 - Kunci `anon` Supabase memang aman di situs publik; data tiap akun dilindungi Row Level Security. Jangan pernah menaruh kunci `service_role` di `config.js`.
+
+## Iklan
+Aplikasi ini sendiri tidak menampilkan iklan apa pun. Pemblokirannya bekerja seperti ini:
+- **Yang diblokir aplikasi.** `index.html` memasang *Content-Security-Policy*: browser hanya mengizinkan skrip dari aplikasi ini, Supabase (jsDelivr), YouTube, dan SoundCloud, serta hanya mengizinkan pemutar (iframe) YouTube dan SoundCloud. Skrip iklan, banner, pop-up, atau pemutar dari domain lain yang mencoba masuk ke halaman ini ditolak browser. Setiap pemblokiran dicatat di konsol browser dengan awalan `[Pemblokir]`.
+- **Yang tidak bisa diblokir secara sah.** Iklan di dalam pemutar resmi YouTube (dan SoundCloud bila ada) ditayangkan oleh layanan itu sendiri di dalam iframe mereka. Menghapusnya berarti memodifikasi pemutar resmi dan melanggar ketentuan layanan, jadi aplikasi tidak melakukannya. Iklan yang disiarkan stasiun radio adalah bagian dari siaran itu sendiri.
+- **Alternatif tanpa iklan.** Pilih sumber **Tanpa iklan** di bawah kolom cari: hanya mencari di Audius dan Internet Archive, yang audionya diputar langsung oleh aplikasi tanpa iklan. File lokal juga selalu tanpa iklan. Untuk YouTube tanpa iklan, cara resminya adalah berlangganan YouTube Premium dan masuk ke akun YouTube di browser yang sama.
+
+## Riwayat pencarian
+Setiap pencarian yang memberi hasil disimpan di `localStorage` browser (terpisah per akun, hanya di perangkat itu), lengkap dengan sampul, judul, penyanyi, durasi, sumber, dan waktu terakhir dicari. Ketuk kartu untuk mencari lagi dengan kata kunci dan sumber yang sama, atau tombol putar untuk memutar lagu yang tercatat. Bila lagu itu ternyata sudah tidak bisa diputar, kartunya ditandai dan tombol putar disembunyikan. Riwayat tampil saat kolom cari kosong atau lewat ikon jam di samping tombol Cari.
 
 ## Pintasan keyboard
 Spasi: putar/jeda. Shift + →/←: lagu berikutnya/sebelumnya.

@@ -26,7 +26,10 @@ html{-webkit-text-size-adjust:100%;overflow-x:hidden}
 body{
   font-family:var(--body);font-size:15px;line-height:1.5;
   background:var(--bg);color:var(--text);
-  min-height:100vh;overflow-x:hidden;width:100%;
+  /* "clip", bukan "hidden": overflow-x:hidden menjadikan body kotak scroll sendiri sehingga
+     header, menu samping, dan panel "Sedang diputar" (position:sticky) ikut tenggelam saat scroll.
+     Pergeseran horizontal tetap dicegah oleh overflow-x pada html. */
+  min-height:100vh;overflow-x:clip;width:100%;
   -webkit-tap-highlight-color:transparent;
 }
 img,svg,iframe{max-width:100%;display:block}
@@ -125,6 +128,11 @@ code{font-size:.9em;background:var(--surface2);padding:1px 6px;border-radius:6px
 .count{font-size:13px;color:var(--muted);margin:6px 0 8px;min-height:20px}
 .count:empty{min-height:0;margin:0}
 
+/* Kepala pencarian: kolom cari & pilihan sumber tetap terlihat saat daftar lagu di-scroll */
+.search-head{position:sticky;top:calc(var(--top-h) + env(safe-area-inset-top) + 1px);z-index:20;background:var(--bg);padding:8px 0 4px;margin-top:-8px}
+.search-head::after{content:"";position:absolute;left:0;right:0;top:100%;height:12px;background:linear-gradient(var(--bg),transparent);pointer-events:none}
+.search-head .seg.small{margin:12px 0 4px}
+
 /* Search box */
 .searchbox{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:6px 6px 6px 14px;min-width:0}
 .searchbox:focus-within{border-color:var(--accent)}
@@ -165,6 +173,37 @@ code{font-size:.9em;background:var(--surface2);padding:1px 6px;border-radius:6px
 .notice p{flex:1;min-width:200px;font-size:14px}
 .skeleton{height:64px;border-radius:12px;background:linear-gradient(90deg,var(--surface) 0,var(--surface2) 50%,var(--surface) 100%);background-size:200% 100%;animation:sk 1.2s linear infinite}
 @keyframes sk{to{background-position:-200% 0}}
+
+/* Riwayat pencarian */
+.history{margin-top:8px}
+.history-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:12px}
+.history-head>div{min-width:0}
+.history-head h2{font-family:var(--display);font-size:22px;line-height:1.2;letter-spacing:-.01em;white-space:nowrap}
+.history-head .count{margin:2px 0 0}
+.history-head .btn{height:38px;padding:0 14px;font-size:14px;color:var(--muted)}
+.history-head .btn:hover{color:var(--danger);border-color:var(--danger)}
+.history-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr));gap:10px}
+.h-card{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:stretch;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden;min-width:0;transition:border-color .15s}
+.h-card:hover{border-color:var(--dim)}
+.h-main{display:grid;grid-template-columns:76px minmax(0,1fr);gap:12px;align-items:center;padding:10px;text-align:left;min-width:0}
+.h-art{width:76px;height:76px;border-radius:11px;object-fit:cover;background:var(--surface2);display:grid;place-items:center;color:var(--dim)}
+.h-meta{display:grid;gap:1px;min-width:0}
+.h-tag{font-size:11px;font-weight:700;color:var(--accent-text)}
+.h-tag.alt{color:var(--muted)}
+.h-title{font-weight:700;font-size:15px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.h-artist,.h-q{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.h-info{display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:12px;color:var(--muted);margin:3px 0 2px;min-width:0;font-variant-numeric:tabular-nums}
+.h-q{font-size:12px;color:var(--dim)}
+.h-q b{font-weight:600;color:var(--muted)}
+.h-warn{font-size:12px;color:var(--danger)}
+.h-actions{display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:8px 6px 8px 0}
+.h-play{width:40px;height:40px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center}
+.h-play:hover{filter:brightness(1.08)}
+.h-play .i{width:18px;height:18px}
+.history-empty{display:grid;justify-items:center;text-align:center;gap:6px;padding:36px 20px;border:1px dashed var(--line);border-radius:18px;color:var(--muted)}
+.history-empty-mark{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;margin-bottom:6px;color:var(--accent-text);background:var(--accent-soft);box-shadow:0 0 0 8px color-mix(in srgb,var(--accent) 7%,transparent)}
+.history-empty h3{font-family:var(--display);font-size:18px;color:var(--text)}
+.history-empty p{max-width:42ch;font-size:14px}
 
 /* Radio */
 .radio-tools{display:grid;grid-template-columns:minmax(0,1fr) 200px;gap:10px;margin-bottom:14px}
@@ -273,6 +312,7 @@ dialog::backdrop{background:#0009}
   .shell{display:block;padding:18px 16px calc(var(--bar-h) + var(--tabs-h) + 24px)}
   .side{display:none}
   .view-title{font-size:26px;margin-bottom:14px}
+  .search-head{margin-left:-16px;margin-right:-16px;padding-left:16px;padding-right:16px}
   .tabs{display:grid;grid-template-columns:repeat(4,1fr);position:fixed;left:0;right:0;bottom:0;z-index:45;height:var(--tabs-h);padding-bottom:env(safe-area-inset-bottom);background:var(--surface);border-top:1px solid var(--line)}
   .tabs button{display:grid;justify-items:center;align-content:center;gap:3px;font-size:11px;font-weight:600;color:var(--muted)}
   .tabs button[aria-current="page"]{color:var(--accent-text)}
@@ -306,4 +346,9 @@ dialog::backdrop{background:#0009}
   .art{width:44px;height:44px}
   .acct-name{display:none}
   .folder-actions .btn:not(.icon-btn){padding:0 14px}
+  .history-grid{grid-template-columns:1fr}
+  .history-head h2{font-size:19px}
+  .h-main{grid-template-columns:64px minmax(0,1fr);gap:10px}
+  .h-art{width:64px;height:64px}
+  #histBtn{width:36px}
 }
