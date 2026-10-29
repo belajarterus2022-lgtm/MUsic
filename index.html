@@ -6,7 +6,7 @@
 <!-- Pemblokir iklan & skrip asing: hanya skrip dan pemutar (iframe) dari layanan yang memang dipakai aplikasi yang boleh dimuat.
      Iklan sisipan, banner, atau pemutar dari domain lain diblokir browser. Lihat README bagian "Iklan". -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://www.youtube.com https://s.ytimg.com https://w.soundcloud.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https: data: blob:; media-src 'self' https: blob:; connect-src 'self' https: wss:; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://w.soundcloud.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-<meta name="theme-color" content="#F5F3FD">
+<meta name="theme-color" content="#FBF8EE">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Music">
@@ -14,6 +14,9 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://itunes.apple.com">
+<link rel="preconnect" href="https://api.audius.co">
+<link rel="preconnect" href="https://archive.org">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
@@ -38,6 +41,8 @@
     <symbol id="i-mute" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></symbol>
     <symbol id="i-lyrics" viewBox="0 0 24 24"><path d="M4 6h16M4 12h11M4 18h7"/><circle cx="18" cy="18" r="2"/><path d="M20 18v-6"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></symbol>
     <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
     <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></symbol>
     <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></symbol>
@@ -111,6 +116,8 @@
           <button type="button" class="q-open" id="qOpen" aria-label="Cari lagu" title="Cari lagu" aria-expanded="false" aria-controls="q"><svg class="i"><use href="#i-search"/></svg></button>
           <input id="q" type="search" list="sug" autocomplete="off" enterkeyhint="search" placeholder="Judul, penyanyi, atau link SoundCloud" aria-label="Cari lagu">
           <datalist id="sug"></datalist>
+          <button type="button" class="q-clear" id="qClear" aria-label="Hapus kata kunci" title="Hapus kata kunci"><svg class="i xs"><use href="#i-x"/></svg></button>
+          <button type="button" class="icon-btn plain q-mic" id="qMic" aria-label="Cari dengan suara" title="Cari dengan suara"><svg class="i sm"><use href="#i-mic"/></svg></button>
           <button class="btn primary q-go" type="submit">Cari</button>
           <button type="button" class="icon-btn plain q-close" id="qClose" aria-label="Tutup kolom cari" title="Tutup"><svg class="i sm"><use href="#i-x"/></svg></button>
         </form>
@@ -126,6 +133,7 @@
   <div class="shell">
     <nav class="side" aria-label="Menu">
       <button data-tab="search"><svg class="i"><use href="#i-search"/></svg>Cari lagu</button>
+      <button data-tab="browse"><svg class="i"><use href="#i-grid"/></svg>Jelajah</button>
       <button data-hist><svg class="i"><use href="#i-clock"/></svg>Riwayat lagu</button>
       <button data-tab="radio"><svg class="i"><use href="#i-radio"/></svg>Radio</button>
       <button data-tab="favs"><svg class="i"><use href="#i-heart"/></svg>Favorit</button>
@@ -148,9 +156,12 @@
         <p class="count" id="scHint" hidden></p>
         <p class="count" id="count"></p>
         <div class="list" id="results"></div>
+        <button type="button" class="list-toggle" id="listToggle" aria-expanded="false" hidden><span id="listToggleTxt"></span><svg class="i sm"><use href="#i-down"/></svg></button>
         <div class="empty" id="searchEmpty">
           <p>Ketik nama lagu, penyanyi, band, atau tahun. Semua hasil adalah lagu penuh.</p>
           <div class="chips" id="tryChips"></div>
+          <div class="cat-short"><h3>Jelajah</h3><div class="chips" id="catShort"></div></div>
+          <button type="button" class="btn ghost voice-start" id="voiceStart"><svg class="i sm"><use href="#i-mic"/></svg>Cari dengan suara</button>
         </div>
         <button class="btn ghost block" id="more" hidden>Muat lebih banyak</button>
         <section class="history" id="history" aria-labelledby="hTitle">
@@ -165,6 +176,14 @@
             <p>Lagu yang Anda cari akan muncul di sini lengkap dengan sampul dan info lagunya, jadi mudah dicari atau diputar lagi.</p>
           </div>
         </section>
+      </section>
+
+      <!-- JELAJAH -->
+      <section class="view" data-view="browse" hidden>
+        <header class="view-head"><h1 class="view-title">Jelajah musik</h1><p class="view-sub">Pilih halaman: album, band, K-Pop, dangdut, pop, rock, atau indie. Ketuk kartu untuk mencari lagunya.</p></header>
+        <div class="cat-tabs" id="catTabs" role="group" aria-label="Kategori musik"></div>
+        <p class="count" id="catCount"></p>
+        <div class="cat-grid" id="catGrid"></div>
       </section>
 
       <!-- RADIO -->
@@ -268,6 +287,7 @@
 
   <nav class="tabs" aria-label="Menu">
     <button data-tab="search"><svg class="i"><use href="#i-search"/></svg>Cari</button>
+    <button data-tab="browse"><svg class="i"><use href="#i-grid"/></svg>Jelajah</button>
     <button data-hist id="histBtn"><svg class="i"><use href="#i-clock"/></svg>Riwayat</button>
     <button data-tab="radio"><svg class="i"><use href="#i-radio"/></svg>Radio</button>
     <button data-tab="favs"><svg class="i"><use href="#i-heart"/></svg>Favorit</button>
@@ -295,6 +315,32 @@
 
 <dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+
+<!-- ============ PENCARIAN SUARA ============ -->
+<div class="voice" id="voice" role="dialog" aria-modal="true" aria-labelledby="vTitle" hidden>
+  <div class="voice-card">
+    <button type="button" class="icon-btn plain voice-x" id="vClose" aria-label="Batal" title="Batal"><svg class="i sm"><use href="#i-x"/></svg></button>
+    <button type="button" class="voice-orb" id="vOrb" aria-label="Berhenti bicara"><span class="voice-ring"></span><span class="voice-ring r2"></span><svg class="i"><use href="#i-mic"/></svg></button>
+    <h2 id="vTitle">Mendengarkan…</h2>
+    <p class="voice-text" id="vText" aria-live="polite"></p>
+    <p class="voice-hint" id="vHint"></p>
+    <div class="seg small voice-lang" id="vLang" role="group" aria-label="Bahasa pengenalan suara">
+      <button type="button" data-lang="id-ID" aria-pressed="true">Indonesia</button>
+      <button type="button" data-lang="en-US" aria-pressed="false">English</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- LEMBAR ALBUM -->
+<div class="voice" id="albumSheet" role="dialog" aria-modal="true" aria-labelledby="alTitle" hidden>
+  <div class="sheet-card">
+    <button type="button" class="icon-btn plain voice-x" id="alClose" aria-label="Tutup" title="Tutup"><svg class="i sm"><use href="#i-x"/></svg></button>
+    <div class="sheet-top"><div class="cat-img" id="alImg"></div><div><h2 id="alTitle"></h2><p id="alSub"></p></div></div>
+    <div class="sheet-list" id="alList"></div>
+  </div>
+</div>
 
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>

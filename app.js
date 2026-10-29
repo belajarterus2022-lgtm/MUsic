@@ -57,7 +57,7 @@ const decodeHtml = s => { const t = document.createElement("textarea"); t.innerH
 function applyTheme(t) {
   const dark = t === "dark";
   document.documentElement.dataset.theme = dark ? "dark" : "light";
-  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = dark ? "#120F26" : "#F5F3FD";
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = dark ? "#100D06" : "#FBF8EE";
   const b = $("#themeBtn"); if (!b) return;
   const lbl = dark ? "Ganti ke tema cerah" : "Ganti ke tema gelap";
   b.setAttribute("aria-label", lbl); b.title = lbl;
@@ -238,6 +238,7 @@ function showView(name) {
   store.set("lastView", name);
   setSheet(false);
   if (name === "radio") Radio.ensure();
+  if (name === "browse") Browse.ensure();
   window.scrollTo({ top: 0 });
 }
 $$("[data-tab]").forEach(b => b.onclick = () => { showView(b.dataset.tab); if (b.dataset.tab === "search") Quick.open(); });
@@ -280,7 +281,7 @@ function plainSong(it) {
 
 function trackRow(it, list, i, ctx) {
   const art = it.art
-    ? el("img", { class: "art", src: it.art, alt: "", loading: "lazy", referrerpolicy: "no-referrer", onerror: e => e.target.replaceWith(el("div", { class: "art" }, icon("music"))) })
+    ? el("img", { class: "art", src: it.art, alt: "", loading: "lazy", decoding: "async", referrerpolicy: "no-referrer", onerror: e => e.target.replaceWith(el("div", { class: "art" }, icon("music"))) })
     : el("div", { class: "art" }, icon("music"));
   const sub = el("span", { class: "row-sub" }, el("span", { class: "a", text: [it.artist, it.year].filter(Boolean).join(", ") || " " }));
   if (it.kind !== "local") sub.prepend(el("span", { class: "src " + (SRC_CLASS[it.kind] || ""), text: SRC_LABEL[it.kind] || "" }));
@@ -543,30 +544,51 @@ async function ytApiSearch(q, st) {
     .filter(it => it.dur && it.dur >= MIN_SEC);
   return { items, more: !!st.ytPage };
 }
-async function tryHosts(hosts, good, fn) {
-  const order = good ? [good, ...hosts.filter(h => h !== good)] : hosts;
-  let last;
-  for (const h of order) { try { const r = await fn(h); return [r, h]; } catch (e) { last = e; } }
-  throw last || new Error("semua server gagal");
+// Coba server satu per satu, TAPI tidak menunggu yang lambat: bila server pertama belum menjawab dalam `stagger` ms,
+// server berikutnya ikut dicoba bersamaan. Yang menjawab lebih dulu dipakai. Jauh lebih cepat bila ada server publik yang mati/lambat.
+function tryHosts(hosts, good, fn, { stagger = 1200 } = {}) {
+  const order = good ? [good, ...hosts.filter(h => h !== good)] : hosts.slice();
+  return new Promise((resolve, reject) => {
+    let started = 0, failed = 0, done = false, timer, last;
+    const launch = () => {
+      if (done || started >= order.length) return;
+      const h = order[started++];
+      clearTimeout(timer);
+      if (started < order.length) timer = setTimeout(launch, stagger);
+      Promise.resolve().then(() => fn(h)).then(
+        r => { if (!done) { done = true; clearTimeout(timer); resolve([r, h]); } },
+        e => {
+          last = e; if (done) return;
+          if (++failed >= order.length) { done = true; clearTimeout(timer); reject(last || new Error("semua server gagal")); }
+          else launch();
+        });
+    };
+    if (!order.length) return reject(new Error("tidak ada server"));
+    launch();
+  });
 }
+const hostDown = { piped: 0, inv: 0 };   // bila semua server satu kelompok gagal, lewati dulu 2 menit agar pencarian berikutnya tidak menunggu lagi
 async function ytKeylessSearch(q, st) {
   if (!st.ytK) st.ytK = { page: 0, piped: null, usePiped: true };
   const k = st.ytK;
   // Piped (filter "music_songs" = katalog lagu YouTube Music, sangat relevan)
+  if (k.usePiped && Date.now() < hostDown.piped) k.usePiped = false;
   if (k.usePiped) {
     try {
       const [d, h] = await tryHosts(PIPED, goodPiped, h => getJSON(k.piped
         ? `${h}/nextpage/search?nextpage=${enc(k.piped)}&q=${enc(q)}&filter=music_songs`
-        : `${h}/search?q=${enc(q)}&filter=music_songs`, { timeout: 7000 }));
+        : `${h}/search?q=${enc(q)}&filter=music_songs`, { timeout: 5500 }));
       goodPiped = h; k.piped = d.nextpage || null;
       const items = (d.items || []).filter(x => x.url && x.duration >= MIN_SEC)
         .map(x => ytItem((x.url.match(/v=([\w-]{11})/) || [])[1], x.title, x.uploaderName, x.duration)).filter(x => x.vid);
       if (items.length || k.piped) return { items, more: !!k.piped };
-    } catch (e) { /* lanjut ke Invidious */ }
+    } catch (e) { hostDown.piped = Date.now() + 120000; /* lanjut ke Invidious */ }
     k.usePiped = false;
   }
   k.page++;
-  const [d, h] = await tryHosts(INVID, goodInv, h => getJSON(`${h}/api/v1/search?q=${enc(q)}&type=video&page=${k.page}&region=ID`, { timeout: 7000 }));
+  let d, h;
+  try { [d, h] = await tryHosts(INVID, goodInv, h => getJSON(`${h}/api/v1/search?q=${enc(q)}&type=video&page=${k.page}&region=ID`, { timeout: 5500 })); }
+  catch (e) { hostDown.inv = Date.now() + 120000; throw e; }
   goodInv = h;
   const items = (d || []).filter(x => x.type === "video" && !x.liveNow && x.lengthSeconds >= MIN_SEC)
     .map(x => ytItem(x.videoId, x.title, x.author, x.lengthSeconds));
@@ -648,6 +670,22 @@ const YtAudio = {
     }
   }
 };
+/* --- Sumber alternatif: dipakai HANYA bila sumber utama sebuah lagu gagal total (lihat Player.tryAlt). ---
+   Mencari unggahan YouTube lain dari lagu yang sama, lalu versi Audius. Hasil harus lolos saringan relevansi yang sama
+   dengan pencarian (artis + judul cocok) dan durasinya mirip, supaya yang diputar memang lagu yang sama. */
+async function findAlternatives(it) {
+  const q = `${it.artist || ""} ${it.title || ""}`.replace(/\s+/g, " ").trim();
+  if (q.length < 2) return [];
+  const seen = new Set([it.vid]), out = [];
+  const durOk = d => !it.dur || !d || Math.abs(d - it.dur) <= Math.max(20, it.dur * .2);
+  const [yt, au] = await Promise.allSettled([ytSearch(engineQuery(q), {}), audiusSearch(q, {})]);
+  if (yt.status === "fulfilled") {
+    yt.value.items.map(x => ({ x, r: relevance(x, q) })).filter(o => o.r.ok && o.x.vid && !seen.has(o.x.vid) && durOk(o.x.dur))
+      .sort((a, b) => b.r.score - a.r.score).slice(0, 3).forEach(o => { seen.add(o.x.vid); out.push({ kind: "yt", vid: o.x.vid }); });
+  }
+  if (au.status === "fulfilled") au.value.items.filter(x => relevance(x, q).ok && durOk(x.dur)).slice(0, 1).forEach(x => out.push({ kind: "audius", src: x.src }));
+  return out;
+}
 async function ytFindOne(q) {
   const r = await ytSearch(q, {});
   const best = r.items.sort((a, b) => score(b, q) - score(a, q))[0];
@@ -747,7 +785,8 @@ async function audiusSearch(q, st) {
 /* --- Internet Archive --- */
 async function archiveSearch(q, st) {
   st.iaPage = (st.iaPage || 0) + 1;
-  const qq = `(title:(${q}) OR creator:(${q})) AND mediatype:(audio)`;
+  const w = String(q).replace(/[+\-&|!(){}\[\]^"~*?:\\\/]/g, " ").split(/\s+/).filter(Boolean).slice(0, 6), qs = w.join(" AND ") || "music";
+  const qq = `(title:(${qs}) OR creator:(${qs})) AND mediatype:(audio)`;
   const d = (await getJSON(`https://archive.org/advancedsearch.php?q=${enc(qq)}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&rows=15&page=${st.iaPage}&output=json`)).response.docs || [];
   return {
     more: d.length >= 15, items: d.map(x => ({
@@ -789,7 +828,26 @@ let qMemo = { q: null };
 function qTokens(q) {
   if (qMemo.q === q) return qMemo;
   const all = normR(q).split(" ").filter(Boolean);
-  return (qMemo = { q, all, req: all.filter(t => !isOptional(t)), noisy: NOISE.test(norm(q)) });
+  return (qMemo = { q, all, req: all.filter(t => !isOptional(t)), noisy: NOISE.test(norm(q)), comp: COMPILATION.test(norm(q)) });
+}
+// Video kumpulan (album penuh, nonstop, playlist berjam-jam) bukan "satu lagu"; dibuang kecuali memang dicari.
+const COMPILATION = /\b(full album|nonstop|non stop|jukebox|kumpulan lagu|compilation|kompilasi|medley|greatest hits|best of|playlist|\d+ (jam|hours?|hour|lagu|songs?)|top \d+)\b/;
+// Kata pengisi dibuang dari kata kunci yang DIKIRIM ke mesin pencari ("lagu tulus terbaru" -> "tulus") agar hasil mesin
+// lebih tepat. Hanya bila masih ada kata inti lain; kata kunci asli tetap dipakai untuk menyaring dan untuk riwayat.
+const FILLER = new Set(("lagu lagunya song songs musik music official audio video mv clip klip lirik lyric lyrics full terbaru terbaik terpopuler " +
+  "populer hits hit playlist kumpulan best top new baru kpop jpop cpop korea korean jepang japan japanese mandarin china chinese barat indo indonesia").split(" "));
+function engineQuery(q) {
+  const raw = String(q).trim().split(/\s+/);
+  const kept = raw.filter(w => !FILLER.has(normR(w)));
+  return kept.some(w => !isOptional(normR(w))) && kept.length ? kept.join(" ") : String(q).trim();
+}
+// Cocok per KATA, bukan potongan huruf: "dewa" tidak lagi cocok dengan "dewasa", "7" tidak cocok dengan "17".
+// Awalan hanya diterima untuk imbuhan pendek ("kangen" ~ "kangenku") atau kata kunci panjang; huruf CJK tetap cocok sebagian.
+const CJK = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/;
+function tokHit(w, t) {
+  if (w === t) return true;
+  if (CJK.test(t)) return w.includes(t);
+  return w.startsWith(t) && (t.length >= 5 || w.length - t.length <= 1);
 }
 function lev1(a, b) { // salah ketik maksimal 1: satu huruf salah, kurang/lebih satu huruf, atau dua huruf bersebelahan tertukar
   if (a === b) return true;
@@ -810,6 +868,7 @@ function relevance(it, q) {
   const Q = qTokens(q);
   const noisy = NOISE.test(norm(it.title + " " + (it.raw || ""))) && !Q.noisy;
   if (noisy) return { ok: false, score: -1 };
+  if (!Q.comp && (COMPILATION.test(norm(it.title + " " + (it.raw || ""))) || (it.dur || 0) > 1200)) return { ok: false, score: -1 };
   // Kata kunci hanya berisi kata umum (mis. "lagu pop 2000"): tidak bisa disaring per artis.
   if (!Q.req.length) {
     const hay = " " + norm(`${it.title} ${it.artist} ${it.album || ""} ${it.year || ""} ${it.raw || ""}`) + " ";
@@ -830,7 +889,7 @@ function relevance(it, q) {
   });
   let fuzzy = 0;
   const covered = Q.req.every(t => {
-    if (words.some(w => w.includes(t))) return true;
+    if (words.some(w => w.some(x => tokHit(x, t)))) return true;
     if (t.length >= 6 && !/\d/.test(t) && words.some(w => w.some(x => x.length >= 6 && lev1(t, x)))) { fuzzy++; return true; }
     return false;
   });
@@ -852,6 +911,11 @@ function relevance(it, q) {
   sc -= fuzzy * .4;
   if (artistHit) sc += .5;
   if (it.kind === "yt") sc += .1;
+  // Pengurutan: rilis resmi dan durasi lagu yang wajar lebih atas; versi live/akustik dan video sangat panjang lebih bawah
+  const rawAll = norm(`${it.raw || ""} ${it.title}`);
+  if (/\b(official|resmi)\b/.test(rawAll)) sc += .25;
+  if (!/\b(live|konser|concert|akustik|acoustic|session|performance)\b/.test(norm(q)) && /\b(live|konser|concert|akustik|acoustic|session|performance)\b/.test(rawAll)) sc -= .6;
+  if (it.dur) { if (it.dur >= 120 && it.dur <= 480) sc += .2; else if (it.dur > 600) sc -= .5; }
   return { ok: true, score: sc, artist: artistHit };
 }
 function score(it, q) { return relevance(it, q).score; }
@@ -864,63 +928,92 @@ $$("#srcSeg button").forEach(b => {
   b.onclick = () => { srcSel = b.dataset.src; store.set("srcSel", srcSel); $$("#srcSeg button").forEach(x => x.setAttribute("aria-pressed", x === b)); if ($("#q").value.trim()) runSearch(false); updateScHint(); };
 });
 
+const PAGE = 15;   // jumlah lagu yang tampil dulu; sisanya dibuka lewat tombol panah
+function updateMore() { $("#more").hidden = !Object.values(S.more).some(Boolean) || (S.items.length > PAGE && !S.open); }
+function syncToggle(cur) {
+  const t = $("#listToggle"), n = cur.items.length;
+  if (n <= PAGE) { t.hidden = true; return; }
+  t.hidden = false; t.classList.toggle("up", !!cur.open); t.setAttribute("aria-expanded", !!cur.open);
+  $("#listToggleTxt").textContent = cur.open ? `Tampilkan lebih sedikit (${PAGE} dari ${n} lagu)` : `Tampilkan semua ${n} lagu`;
+}
+function paintResults(cur) {
+  const box = $("#results"), items = cur.items, n = cur.open ? items.length : Math.min(PAGE, items.length);
+  box.innerHTML = "";
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < n; i++) frag.append(trackRow(items[i], items, i, "search"));
+  box.append(frag); markPlaying(); syncToggle(cur);
+}
+$("#listToggle").onclick = () => {
+  S.open = !S.open; paintResults(S); updateMore();
+  if (!S.open) $("#results").scrollIntoView({ block: "start", behavior: "smooth" });
+};
 async function runSearch(more) {
   const q = $("#q").value.trim();
+  syncClear();
   if (!more && SC_URL.test(q)) { toSearchView(); updateScHint(); return runScUrl(q); }
   if (q.length < 2) { if (!more) { Quick.open(); toast("Ketik minimal 2 huruf."); } return; }
   if (!more) toSearchView();
   if (!more) {
     updateScHint();
     const names = srcSel === "all" ? Object.keys(SOURCES) : (SRC_GROUP[srcSel] || [srcSel]);
-    S = { q, items: [], keys: new Set(), more: Object.fromEntries(names.map(n => [n, true])), st: {}, tok: S.tok + 1, busy: false };
+    S = { q, eq: engineQuery(q), items: [], keys: new Set(), more: Object.fromEntries(names.map(n => [n, true])), st: {}, tok: S.tok + 1, busy: false, skel: true, open: false };
     $("#results").innerHTML = ""; $("#results").append(el("div", { class: "skeleton" }), el("div", { class: "skeleton" }), el("div", { class: "skeleton" }));
-    setSearchHome(false); $("#more").hidden = true; $("#count").textContent = "Mencari lagu penuh…";
+    setSearchHome(false); $("#more").hidden = true; $("#listToggle").hidden = true; $("#count").textContent = "Mencari lagu penuh…";
     $("#q").blur();
   }
-  if (S.busy) return; S.busy = true;
-  const tk = S.tok, names = Object.keys(S.more).filter(n => S.more[n]);
+  if (S.busy) return;
+  const cur = S; cur.busy = true;
+  const tk = cur.tok, names = Object.keys(cur.more).filter(n => cur.more[n]);
   $("#more").disabled = true;
-  const res = await Promise.allSettled(names.map(n => SOURCES[n](S.q, S.st)));
-  S.busy = false; $("#more").disabled = false;
+  const fails = [];
+  let pending = names.length;
+  const clearSkel = () => { if (cur.skel) { $("#results").innerHTML = ""; cur.skel = false; } };
+  // Setiap sumber ditampilkan begitu ia selesai (tidak menunggu sumber paling lambat).
+  const onSource = (n, r) => {
+    pending--;
+    if (!r.ok) { cur.more[n] = false; fails.push(n); return; }
+    cur.more[n] = r.v.more;
+    const batch = [];
+    r.v.items.forEach(it => {
+      const k = songKey(it); if (cur.keys.has(k)) return;
+      const rel = relevance(it, cur.q);
+      if (!rel.ok) return;   // buang hasil yang tidak cocok dengan artis/band/judul yang dicari (semua sumber)
+      cur.keys.add(k); it._s = rel.score; it._a = !!rel.artist; batch.push(it);
+    });
+    /* Kunci artis: bila kata kunci jelas nama artis/band/grup (cukup banyak hasil milik artis itu),
+       tampilkan HANYA lagu milik artis itu. Video lain yang sekadar menyebut namanya dibuang. */
+    let relock = false;
+    if (!cur.lock) {
+      const cand = cur.items.concat(batch), hits = cand.filter(x => x._a).length;
+      if (hits >= 3 && hits >= cand.length * .3) { cur.lock = true; relock = cur.items.some(x => !x._a); }
+    }
+    if (cur.lock) { for (let j = batch.length - 1; j >= 0; j--) if (!batch[j]._a) batch.splice(j, 1); if (relock) cur.items = cur.items.filter(x => x._a); }
+    batch.sort((x, y) => y._s - x._s);
+    if (!batch.length && !relock) return;
+    clearSkel();
+    if (!more || cur.autoRun || relock) { cur.items.push(...batch); cur.items.sort((x, y) => y._s - x._s); paintResults(cur); }
+    else if (cur.open) { const from = cur.items.length; cur.items.push(...batch); renderRows($("#results"), cur.items, "search", from); syncToggle(cur); }
+    else { cur.items.push(...batch); paintResults(cur); }
+    if (pending > 0) $("#count").textContent = `${cur.items.length} lagu cocok untuk "${cur.q}", masih mencari di sumber lain…`;
+  };
+  await Promise.all(names.map(n => SOURCES[n](cur.eq || cur.q, cur.st).then(v => ({ ok: true, v }), e => ({ ok: false, e })).then(r => { if (tk === S.tok) onSource(n, r); })));
+  cur.busy = false; $("#more").disabled = false;
   if (tk !== S.tok) return;
-  if (!more) $("#results").innerHTML = "";
-  const fails = [], batch = [];
-  res.forEach((r, i) => {
-    const n = names[i];
-    if (r.status === "fulfilled") {
-      S.more[n] = r.value.more;
-      r.value.items.forEach(it => {
-        const k = songKey(it); if (S.keys.has(k)) return;
-        const rel = relevance(it, S.q);
-        if (!rel.ok) return;   // buang hasil yang tidak cocok dengan artis/band/judul yang dicari (semua sumber)
-        S.keys.add(k); it._s = rel.score; it._a = !!rel.artist; batch.push(it);
-      });
-    } else { S.more[n] = false; fails.push(n); }
-  });
-  /* Kunci artis: bila kata kunci jelas nama artis/band/grup (cukup banyak hasil milik artis itu),
-     tampilkan HANYA lagu milik artis itu. Video lain yang sekadar menyebut namanya dibuang. */
-  let relock = false;
-  if (!S.lock) {
-    const cand = S.items.concat(batch), hits = cand.filter(x => x._a).length;
-    if (hits >= 3 && hits >= cand.length * .3) { S.lock = true; relock = S.items.some(x => !x._a); }
-  }
-  if (S.lock) { for (let j = batch.length - 1; j >= 0; j--) if (!batch[j]._a) batch.splice(j, 1); if (relock) S.items = S.items.filter(x => x._a); }
-  batch.sort((a, b) => b._s - a._s);
-  if (S.autoRun || relock) { S.items.push(...batch); S.items.sort((a, b) => b._s - a._s); renderRows($("#results"), S.items, "search", 0); }
-  else { const from = S.items.length; S.items.push(...batch); renderRows($("#results"), S.items, "search", from); }
-  const anyMore = Object.values(S.more).some(Boolean);
-  $("#more").hidden = !anyMore;
-  if (S.items.length && !S.logged) { S.logged = true; History.add(S.q, srcSel, S.items[0], S.items.length); }
+  if (!more) clearSkel();
+  const anyMore = Object.values(cur.more).some(Boolean);
+  updateMore();
+  if (cur.items.length && !cur.logged) { cur.logged = true; History.add(cur.q, srcSel, cur.items[0], cur.items.length); }
   // Karena hasil yang tidak cocok dibuang, ambil halaman berikutnya otomatis (maks. 2 kali) bila hasilnya masih sedikit.
-  if (anyMore && S.items.length < 8 && (S.auto || 0) < 2) {
-    S.auto = (S.auto || 0) + 1; S.autoRun = true; $("#count").textContent = S.items.length ? `${S.items.length} lagu cocok untuk "${S.q}", mencari lagi…` : "Mencari lagu yang cocok…";
+  if (anyMore && cur.items.length < 8 && (cur.auto || 0) < 2) {
+    cur.auto = (cur.auto || 0) + 1; cur.autoRun = true; $("#count").textContent = cur.items.length ? `${cur.items.length} lagu cocok untuk "${cur.q}", mencari lagi…` : "Mencari lagu yang cocok…";
     return runSearch(true);
   }
   const failTxt = fails.length ? ` Sumber yang sedang tidak bisa dijangkau: ${fails.map(n => ({ youtube: "YouTube", soundcloud: "SoundCloud", audius: "Audius", archive: "Internet Archive" })[n]).join(", ")}.` : "";
-  if (!S.items.length) {
+  if (!cur.items.length) {
+    if (fails.length < names.length && Voice.fallback(cur.q)) return;   // pencarian suara: coba kemungkinan ucapan lain
     $("#count").textContent = "";
-    $("#results").append(el("div", { class: "empty" }, el("p", { text: (fails.length === names.length ? "Semua sumber lagu sedang tidak bisa dijangkau. Coba lagi sebentar lagi." : `Tidak ada lagu penuh yang cocok dengan "${S.q}". Periksa ejaan nama artis, band, atau judul lagunya.`) + failTxt })));
-  } else $("#count").textContent = `${S.items.length} lagu penuh yang cocok dengan "${S.q}".${failTxt}`;
+    $("#results").append(el("div", { class: "empty" }, el("p", { text: (fails.length === names.length ? "Semua sumber lagu sedang tidak bisa dijangkau. Coba lagi sebentar lagi." : `Tidak ada lagu penuh yang cocok dengan "${cur.q}". Periksa ejaan nama artis, band, atau judul lagunya.`) + failTxt })));
+  } else $("#count").textContent = `${cur.items.length} lagu penuh yang cocok dengan "${cur.q}".${failTxt}`;
 }
 $("#searchForm").onsubmit = e => { e.preventDefault(); runSearch(false); };
 $("#more").onclick = () => { S.autoRun = false; runSearch(true); };
@@ -1033,7 +1126,7 @@ function setSearchHome(on) {
   if (!on && !$('.view[data-view="search"]').hidden && $$("[data-hist]").some(b => b.getAttribute("aria-current") === "page")) { markHist(false); $$('[data-tab="search"]').forEach(b => b.setAttribute("aria-current", "page")); }
   $("#searchEmpty").hidden = !on; $("#history").hidden = !on;
   $("#results").hidden = on; $("#count").hidden = on;
-  if (on) { $("#more").hidden = true; $("#scHint").hidden = true; History.render(); }
+  if (on) { $("#more").hidden = true; $("#listToggle").hidden = true; $("#scHint").hidden = true; History.render(); }
 }
 $("#hClear").onclick = () => History.clear();
 function markHist(on) {
@@ -1046,22 +1139,274 @@ $$("[data-hist]").forEach(b => b.onclick = () => {
 });
 $("#q").addEventListener("input", () => { if (!$("#q").value.trim() && $("#history").hidden) setSearchHome(true); });
 
-// Saran nama penyanyi/judul saat mengetik (data katalog iTunes, tanpa audio)
-let sugT, lastSug = [];
+// Saran nama penyanyi/judul saat mengetik (data katalog iTunes, tanpa audio). Cepat: jeda singkat, hasil disimpan, jawaban basi diabaikan.
+let sugT, lastSug = [], sugSeq = 0;
+const sugCache = new Map();
+function showSug(list) { lastSug = list; const dl = $("#sug"); dl.innerHTML = ""; list.forEach(v => dl.append(el("option", { value: v }))); }
 $("#q").addEventListener("input", () => {
   const q = $("#q").value.trim();
   if (lastSug.includes(q)) { runSearch(false); return; } // pengguna memilih saran
-  clearTimeout(sugT); if (q.length < 2) return;
+  clearTimeout(sugT); const my = ++sugSeq;
+  if (q.length < 2) { if (!q) showSug([]); return; }
+  const key = q.toLowerCase();
+  if (sugCache.has(key)) { showSug(sugCache.get(key)); return; }
   sugT = setTimeout(async () => {
     try {
-      const r = (await getJSON(`https://itunes.apple.com/search?term=${enc(q)}&media=music&entity=song&limit=10&country=id`, { timeout: 5000 })).results || [];
-      lastSug = [...new Set(r.flatMap(x => [x.artistName, `${x.artistName} ${x.trackName}`]))].slice(0, 8);
-      const dl = $("#sug"); dl.innerHTML = ""; lastSug.forEach(v => dl.append(el("option", { value: v })));
+      const r = (await getJSON(`https://itunes.apple.com/search?term=${enc(q)}&media=music&entity=song&limit=10&country=id`, { timeout: 4000 })).results || [];
+      const list = [...new Set(r.flatMap(x => [x.artistName, `${x.artistName} ${x.trackName}`]))].slice(0, 8);
+      if (sugCache.size > 60) sugCache.delete(sugCache.keys().next().value);
+      sugCache.set(key, list);
+      if (my === sugSeq) showSug(list);
     } catch { }
-  }, 300);
+  }, 140);
+});
+
+/* ---------------------------------------------------------------------
+   TOMBOL X (hapus kata kunci)
+--------------------------------------------------------------------- */
+function syncClear() { $("#searchForm").classList.toggle("has-text", !!$("#q").value); }
+$("#q").addEventListener("input", syncClear);
+$("#qClear").onclick = () => {
+  const inp = $("#q");
+  inp.value = ""; syncClear(); showSug([]); clearTimeout(sugT); sugSeq++;
+  S.tok++;                                   // batalkan pencarian yang masih berjalan agar hasil lamanya tidak muncul
+  inp.dispatchEvent(new Event("input"));     // kembali ke beranda pencarian (saran + riwayat)
+  inp.focus();
+};
+
+/* ---------------------------------------------------------------------
+   PENCARIAN SUARA (Web Speech API bawaan browser: Chrome, Edge, Safari)
+   Ucapan dibersihkan dari kata perintah ("cari", "putar", "mainkan"…) lalu dicari seperti ketikan biasa.
+   Bila tidak ada hasil, kemungkinan ucapan lain dari pengenal suara dicoba otomatis.
+--------------------------------------------------------------------- */
+function cleanVoice(t) {
+  let s = String(t || "").replace(/[“”"‘’]/g, "").replace(/\s+/g, " ").trim();
+  const lead = /^(?:tolong\s+|coba\s+|bisa\s+|ayo\s+|dong\s+)?(?:cari(?:kan|in)?|putar(?:kan|in)?|mainkan|setel(?:kan)?|dengar(?:kan|in)?|dengerin|play|search(?:\s+for)?|find(?:\s+me)?|look\s+up)\s+(?:(?:lagu|lagunya|musik|song|songs|music|band|grup|group|penyanyi|artis|artist)\s+)?(?:(?:dari|oleh|by|nya)\s+)?/i;
+  for (let i = 0; i < 2; i++) { const r = s.replace(lead, ""); if (r === s || !r) break; s = r; }
+  s = s.replace(/\s+(?:dong|ya|deh|please|tolong|sekarang|nya)$/i, "").replace(/[.,!?;:…]+$/g, "").trim();
+  return s || String(t || "").replace(/[.,!?;:…]+$/g, "").trim();
+}
+const Voice = {
+  SR: window.SpeechRecognition || window.webkitSpeechRecognition,
+  rec: null, alts: [], altsFor: "", paused: false, final: "", err: "", gotAny: false, safeT: 0, run: 0,
+  lang: store.get("voiceLang", "id-ID"),
+  ui(state, title, text, hint) {
+    const v = $("#voice"); v.classList.toggle("listening", state === "listening");
+    $("#vTitle").textContent = title;
+    const t = $("#vText"); t.textContent = text || ""; t.classList.toggle("dim", !text || state !== "listening" || !this.gotAny);
+    $("#vHint").textContent = hint || "";
+    $("#vOrb").setAttribute("aria-label", state === "listening" ? "Berhenti bicara" : "Bicara lagi");
+    $("#qMic").classList.toggle("on", state === "listening"); $("#qMic").setAttribute("aria-pressed", state === "listening");
+  },
+  open() {
+    if (!this.SR) { toast("Browser ini belum mendukung pencarian suara. Gunakan Chrome, Edge, atau Safari terbaru.", 5000); return; }
+    if (!window.isSecureContext) { toast("Pencarian suara hanya jalan lewat alamat https:// atau localhost.", 5000); return; }
+    $("#voice").hidden = false;
+    $$("#vLang button").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === this.lang));
+    // Jeda lagu yang sedang diputar supaya mikrofon tidak merekam musiknya sendiri; dilanjutkan lagi setelah selesai.
+    if (typeof Player !== "undefined" && Player.playing) { this.paused = true; try { Player.pause(); } catch { } }
+    this.start();
+  },
+  start() {
+    this.stopRec(); this.final = ""; this.err = ""; this.gotAny = false; this.alts = []; const my = ++this.run;
+    let r;
+    try { r = new this.SR(); } catch { this.fail("Pencarian suara tidak bisa dimulai di browser ini."); return; }
+    this.rec = r; r.lang = this.lang; r.interimResults = true; r.continuous = false; r.maxAlternatives = 4;
+    this.ui("listening", "Mendengarkan…", "Sebutkan judul lagu, penyanyi, band, atau grup musik", "");
+    r.onresult = e => {
+      if (my !== this.run) return;
+      let interim = "", fin = null;
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const res = e.results[i];
+        if (res.isFinal) fin = res; else interim += res[0].transcript;
+      }
+      if (fin) {
+        const list = [...fin].map(x => cleanVoice(x.transcript)).filter(Boolean);
+        const uniq = [...new Set(list.map(x => x.toLowerCase()))].map(k => list.find(x => x.toLowerCase() === k));
+        if (uniq.length) { this.final = uniq[0]; this.alts = uniq.slice(1, 3); this.gotAny = true; this.ui("listening", "Mendengarkan…", this.final, ""); try { r.stop(); } catch { } }
+      } else if (interim) { this.gotAny = true; this.ui("listening", "Mendengarkan…", cleanVoice(interim) || interim, ""); }
+    };
+    r.onerror = e => { if (my === this.run) this.err = e.error || "error"; };
+    r.onend = () => {
+      if (my !== this.run) return;
+      clearTimeout(this.safeT); this.rec = null;
+      if (this.final) return this.done(this.final);
+      const msg = {
+        "not-allowed": "Izin mikrofon ditolak. Izinkan mikrofon untuk situs ini di pengaturan browser, lalu coba lagi.",
+        "service-not-allowed": "Pencarian suara tidak diizinkan di sini. Di iPhone mode aplikasi layar utama, gunakan tombol mikrofon pada keyboard.",
+        "audio-capture": "Mikrofon tidak ditemukan atau sedang dipakai aplikasi lain.",
+        "network": "Pengenalan suara butuh internet. Periksa koneksi lalu coba lagi.",
+        "language-not-supported": "Bahasa ini belum didukung di perangkat Anda. Coba bahasa lain.",
+        "no-speech": "Suara tidak terdengar. Dekatkan mikrofon lalu ketuk lingkaran untuk bicara lagi.",
+        "aborted": ""
+      }[this.err];
+      if (this.err === "aborted") return;
+      this.fail(msg || "Tidak ada ucapan yang dikenali. Ketuk lingkaran untuk mencoba lagi.");
+    };
+    try { r.start(); } catch { this.fail("Pencarian suara tidak bisa dimulai. Coba lagi."); return; }
+    clearTimeout(this.safeT); this.safeT = setTimeout(() => { try { r.stop(); } catch { } }, 15000);
+  },
+  fail(msg) { this.ui("idle", "Belum terdengar", "", msg); },
+  stopRec() { clearTimeout(this.safeT); const r = this.rec; this.rec = null; this.run++; if (r) { r.onresult = r.onerror = r.onend = null; try { r.abort(); } catch { } } },
+  close() {
+    this.stopRec(); $("#voice").hidden = true; this.ui("idle", "", "", ""); $("#qMic").classList.remove("on");
+    if (this.paused) { this.paused = false; try { Player.resume(); } catch { } }
+  },
+  done(text) {
+    this.stopRec(); $("#voice").hidden = true; $("#qMic").classList.remove("on");
+    $("#q").value = text; syncClear(); showSug([]);
+    this.altsFor = text;
+    if (this.paused) { this.paused = false; try { Player.resume(); } catch { } }
+    toast(`Dikenali: “${text}”`, 2600);
+    if (!isMobile()) Quick.open(false);
+    runSearch(false);
+  },
+  // Dipanggil saat pencarian tidak menemukan apa pun: coba kemungkinan ucapan berikutnya.
+  fallback(q) {
+    if (this.altsFor !== q || !this.alts.length) return false;
+    const n = this.alts.shift(); this.altsFor = n;
+    $("#q").value = n; syncClear();
+    toast(`Tidak ada hasil untuk “${q}”. Mencoba: “${n}”`, 3200);
+    runSearch(false); return true;
+  }
+};
+$("#qMic").onclick = () => Voice.open();
+$("#voiceStart").onclick = () => { if (!isMobile()) Quick.open(false); Voice.open(); };
+$("#vClose").onclick = () => Voice.close();
+$("#voice").addEventListener("click", e => { if (e.target.id === "voice") Voice.close(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#voice").hidden) Voice.close(); });
+$("#vOrb").onclick = () => { if (Voice.rec) { try { Voice.rec.stop(); } catch { } } else Voice.start(); };
+$$("#vLang button").forEach(b => b.onclick = () => {
+  Voice.lang = b.dataset.lang; store.set("voiceLang", Voice.lang);
+  $$("#vLang button").forEach(x => x.setAttribute("aria-pressed", x === b)); Voice.start();
 });
 ["Dewa 19", "Sheila on 7", "Tulus", "Nadin Amizah", "Noah", "Didi Kempot", "Lagu pop 2000"].forEach(t =>
   $("#tryChips").append(el("button", { class: "chip", text: t, onclick: () => { $("#q").value = t; runSearch(false); } })));
+
+/* =====================================================================
+   JELAJAH: album, band, K-Pop, dangdut, pop, rock, indie
+   Gambar kartu diambil dari katalog iTunes (tanpa kunci), dibatasi 3 permintaan sekaligus dan disimpan di perangkat.
+   Ketuk kartu artis = cari lagunya (hasil tetap lewat saringan akurasi); ketuk album = daftar lagu album.
+===================================================================== */
+const BROWSE_CATS = [
+  { id: "album", label: "Album", sub: "Album populer. Ketuk untuk melihat daftar lagunya.", albums: [
+    ["Dewa 19", "Pandawa Lima"], ["Sheila on 7", "Kisah Klasik untuk Masa Depan"], ["Tulus", "Monokrom"], ["Raisa", "Handmade"],
+    ["Noah", "Seperti Seharusnya"], ["Slank", "Generasi Biru"], ["Padi", "Save My Soul"], ["Peterpan", "Bintang di Surga"],
+    ["Fourtwnty", "Ruang Tunggu"], ["Hindia", "Menari dengan Bayangan"], ["Nadin Amizah", "Selamat Ulang Tahun"], ["Isyana Sarasvati", "Paradox"],
+    ["Payung Teduh", "Dunia Batas"], ["Pamungkas", "Walk the Talk"], ["BTS", "Map of the Soul: 7"], ["BLACKPINK", "Born Pink"],
+    ["NewJeans", "Get Up"], ["TWICE", "Formula of Love"] ] },
+  { id: "band", label: "Band", sub: "Band Indonesia", artists: ["Dewa 19", "Sheila on 7", "Noah", "Slank", "Padi", "Gigi", "Ungu", "Peterpan", "Kahitna", "Naff", "ST12", "d'Masiv", "Kotak", "Wali", "Armada", "Hijau Daun", "Jikustik", "Letto", "Nidji", "Radja"] },
+  { id: "kpop", label: "K-Pop", sub: "K-Pop", artists: ["BTS", "BLACKPINK", "NewJeans", "TWICE", "EXO", "Stray Kids", "SEVENTEEN", "aespa", "IVE", "Red Velvet", "ITZY", "TXT", "ENHYPEN", "LE SSERAFIM", "Girls' Generation", "BIGBANG", "IU", "NCT 127"] },
+  { id: "dangdut", label: "Dangdut", sub: "Dangdut", artists: ["Rhoma Irama", "Elvy Sukaesih", "Rita Sugiarto", "Evie Tamala", "Inul Daratista", "Ayu Ting Ting", "Via Vallen", "Nella Kharisma", "Happy Asmara", "Denny Caknan", "Lesti Kejora", "Didi Kempot", "Dewi Persik", "Cita Citata"] },
+  { id: "pop", label: "Pop", sub: "Pop", artists: ["Tulus", "Raisa", "Isyana Sarasvati", "Afgan", "Rossa", "Yura Yunita", "Mahalini", "Nadin Amizah", "Andmesh", "Judika", "Agnez Mo", "Rizky Febian", "Lyodra", "Tiara Andini", "Ardhito Pramono", "Anji"] },
+  { id: "rock", label: "Rock", sub: "Rock", artists: ["Slank", "Dewa 19", "God Bless", "Jamrud", "Boomerang", "Gigi", "Padi", "Seringai", "Superman Is Dead", "Burgerkill", "Netral", "/rif", "Andra and The Backbone", "Edane", "Kapten", "The Rock"] },
+  { id: "indie", label: "Indie", sub: "Indie", artists: ["Fourtwnty", "Hindia", "Pamungkas", "Reality Club", "Efek Rumah Kaca", "Payung Teduh", "Banda Neira", "Sore", "Mocca", "The Panturas", "Lomba Sihir", "Kunto Aji", "Barasuara", "Juicy Luicy", "Feby Putri", "Dere"] }
+];
+const ArtQ = {
+  cache: store.get("catArt", {}), q: [], run: 0, dirty: 0, saveT: 0,
+  save() { clearTimeout(this.saveT); this.saveT = setTimeout(() => { const ks = Object.keys(this.cache); if (ks.length > 400) ks.slice(0, ks.length - 400).forEach(k => delete this.cache[k]); store.set("catArt", this.cache); }, 600); },
+  get(key) { const c = this.cache[key]; return c && Date.now() - c.t < 30 * 864e5 ? c : null; },
+  add(key, term, cb) {
+    const c = this.get(key); if (c) { cb(c); return; }
+    this.q.push({ key, term, cb, tries: 0 }); this.pump();
+  },
+  pump() {
+    while (this.run < 3 && this.q.length) {
+      const j = this.q.shift(); this.run++;
+      getJSON(`https://itunes.apple.com/search?term=${enc(j.term)}&media=music&entity=album&limit=3&country=id`, { timeout: 8000 })
+        .then(d => {
+          const r = (d.results || []).find(x => x.artworkUrl100);
+          const c = r ? { t: Date.now(), img: r.artworkUrl100.replace(/\d+x\d+bb/, "400x400bb"), id: r.collectionId, name: r.collectionName, artist: r.artistName } : { t: Date.now() - 25 * 864e5, img: "" };
+          this.cache[j.key] = c; this.save(); j.cb(c);
+        })
+        .catch(() => { if (++j.tries < 3) setTimeout(() => { this.q.push(j); this.pump(); }, 4000 * j.tries); })
+        .finally(() => { this.run--; setTimeout(() => this.pump(), 150); });
+    }
+  }
+};
+const Browse = {
+  cat: store.get("cat", "album"), io: null,
+  ensure() { if (!this.built) { this.built = true; this.tabs(); } this.render(); },
+  tabs() {
+    const box = $("#catTabs"); box.innerHTML = "";
+    BROWSE_CATS.forEach(c => box.append(el("button", { type: "button", class: "chip", "data-c": c.id, text: c.label, onclick: () => this.pick(c.id) })));
+  },
+  pick(id) { this.cat = id; store.set("cat", id); this.render(); },
+  render() {
+    const c = BROWSE_CATS.find(x => x.id === this.cat) || BROWSE_CATS[0];
+    $$("#catTabs .chip").forEach(b => b.setAttribute("aria-pressed", b.dataset.c === c.id));
+    const items = c.albums ? c.albums.map(([ar, al]) => ({ name: al, artist: ar, term: `${ar} ${al}`, album: true })) : c.artists.map(ar => ({ name: ar, artist: ar, term: ar }));
+    $("#catCount").textContent = `${items.length} ${c.id === "album" ? "album" : "artis"} · ${c.sub}`;
+    const box = $("#catGrid"); box.innerHTML = "";
+    if (this.io) this.io.disconnect();
+    this.io = "IntersectionObserver" in window ? new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { this.io.unobserve(e.target); e.target._load && e.target._load(); } }), { rootMargin: "300px" }) : null;
+    const frag = document.createDocumentFragment();
+    items.forEach(it => frag.append(this.card(it, c)));
+    box.append(frag);
+  },
+  card(it, c) {
+    const img = el("span", { class: "cat-img", "aria-hidden": "true", text: (it.artist || it.name).replace(/[^\p{L}\p{N}]/gu, "").slice(0, 1).toUpperCase() });
+    const b = el("button", { type: "button", class: "cat-card", title: it.album ? `${it.name} — ${it.artist}` : it.name }, img,
+      el("span", { class: "cat-name", text: it.name }), el("span", { class: "cat-sub", text: it.album ? it.artist : c.sub }));
+    const key = (it.album ? "al:" : "ar:") + norm(it.term);
+    let info = null;
+    b._load = () => ArtQ.add(key, it.term, r => {
+      info = r;
+      if (!r.img) return;
+      const im = el("img", { src: r.img, alt: "", loading: "lazy", decoding: "async", referrerpolicy: "no-referrer" });
+      im.onload = () => im.classList.add("on"); im.onerror = () => im.remove();
+      img.append(im);
+    });
+    b.onclick = () => it.album ? this.openAlbum(it, info) : this.search(it.artist);
+    if (this.io) this.io.observe(b); else b._load();
+    return b;
+  },
+  search(q) { $("#q").value = q; runSearch(false); },
+  async openAlbum(it, info) {
+    const sh = $("#albumSheet"); sh.hidden = false;
+    $("#alTitle").textContent = it.name; $("#alSub").textContent = it.artist;
+    const im = $("#alImg"); im.innerHTML = ""; im.textContent = it.artist.slice(0, 1).toUpperCase();
+    if (info && info.img) im.append(el("img", { src: info.img, alt: "", referrerpolicy: "no-referrer", class: "on", style: "opacity:1" }));
+    const list = $("#alList"); list.innerHTML = ""; list.append(el("p", { class: "sheet-msg", text: "Memuat daftar lagu…" }));
+    const fallback = msg => { list.innerHTML = ""; list.append(el("p", { class: "sheet-msg", text: msg }), el("button", { type: "button", class: "btn primary", style: "margin:0 16px 16px", onclick: () => { sh.hidden = true; this.search(`${it.artist} ${it.name}`); } }, "Cari lagu dengan nama album ini")); };
+    try {
+      let id = info && info.id;
+      if (!id) { const r = await new Promise(res => ArtQ.add("al:" + norm(it.term), it.term, res)); id = r.id; if (r.img && !im.querySelector("img")) im.append(el("img", { src: r.img, alt: "", referrerpolicy: "no-referrer", class: "on", style: "opacity:1" })); }
+      if (!id) return fallback("Daftar lagu album ini belum ditemukan.");
+      const d = (await getJSON(`https://itunes.apple.com/lookup?id=${id}&entity=song&country=id`, { timeout: 8000 })).results || [];
+      const tr = d.filter(x => x.wrapperType === "track" && x.trackName).sort((x, y) => (x.discNumber || 1) - (y.discNumber || 1) || (x.trackNumber || 0) - (y.trackNumber || 0));
+      if (!tr.length) return fallback("Daftar lagu album ini belum ditemukan.");
+      list.innerHTML = "";
+      tr.forEach((t, i) => list.append(el("button", { type: "button", title: "Cari lagu ini", onclick: () => { sh.hidden = true; this.search(`${t.artistName || it.artist} ${t.trackName}`); } },
+        el("span", { class: "n", text: String(i + 1) }), el("span", { class: "t", text: t.trackName }), el("span", { class: "d", text: fmt((t.trackTimeMillis || 0) / 1000) }))));
+    } catch { fallback("Daftar lagu tidak bisa dimuat sekarang (butuh internet)."); }
+  }
+};
+$("#alClose").onclick = () => { $("#albumSheet").hidden = true; };
+$("#albumSheet").addEventListener("click", e => { if (e.target.id === "albumSheet") e.target.hidden = true; });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#albumSheet").hidden) $("#albumSheet").hidden = true; });
+BROWSE_CATS.forEach(c => $("#catShort").append(el("button", { type: "button", class: "chip", text: c.label, onclick: () => { Browse.cat = c.id; store.set("cat", c.id); showView("browse"); } })));
+
+/* Ikon di tab browser berputar seperti piringan hitam emas */
+(function favSpin() {
+  const link = document.querySelector('link[rel="icon"]'); if (!link || matchMedia("(hover:none)").matches) return;
+  const N = 24, frames = []; let k = 0;
+  const cv = document.createElement("canvas"); cv.width = cv.height = 64; const g = cv.getContext("2d"); if (!g) return;
+  function draw(ang) {
+    g.clearRect(0, 0, 64, 64); g.save(); g.translate(32, 32); g.rotate(ang);
+    g.fillStyle = "#1F1A0C"; g.beginPath(); g.arc(0, 0, 31, 0, 7); g.fill();
+    g.strokeStyle = "#4A3E18"; g.lineWidth = 1.2; [26, 21, 16].forEach(r => { g.beginPath(); g.arc(0, 0, r, 0, 7); g.stroke(); });
+    g.strokeStyle = "#E3C259"; g.lineWidth = 3.2; g.lineCap = "round"; g.beginPath(); g.arc(0, 0, 25, -.5, .5); g.stroke();
+    g.strokeStyle = "#8A6A0B"; g.beginPath(); g.arc(0, 0, 25, Math.PI - .5, Math.PI + .5); g.stroke();
+    g.fillStyle = "#D9B547"; g.beginPath(); g.arc(0, 0, 11, 0, 7); g.fill();
+    g.fillStyle = "#1F1A0C"; g.beginPath(); g.arc(6.5, 0, 2, 0, 7); g.fill(); g.beginPath(); g.arc(0, 0, 2.4, 0, 7); g.fill();
+    g.restore(); return cv.toDataURL("image/png");
+  }
+  const set = i => { if (!frames[i]) frames[i] = draw(i * 2 * Math.PI / N); link.type = "image/png"; link.removeAttribute("sizes"); link.href = frames[i]; };
+  set(0);
+  if (matchMedia("(prefers-reduced-motion:reduce)").matches) return;
+  setInterval(() => { k = (k + 1) % N; set(k); }, 110);
+})();
 
 /* =====================================================================
    PEMUTAR (YouTube iframe resmi + SoundCloud widget resmi + elemen audio)
@@ -1092,7 +1437,8 @@ const Player = {
         onError: e => {
           if (this.engine !== "yt") return;
           const M = { 2: "Alamat video tidak valid.", 5: "Video tidak bisa diputar di browser ini.", 100: "Video sudah dihapus atau dibuat privat.", 101: "Pemilik video tidak mengizinkan diputar di luar YouTube.", 150: "Pemilik video tidak mengizinkan diputar di luar YouTube." };
-          this.onError(M[e.data] || "Video tidak bisa diputar.");
+          const msg = M[e.data] || "Video tidak bisa diputar.", tk = this.tok;
+          this.tryAlt(tk).then(done => { if (!done && tk === this.tok) this.onError(msg); });
         }
       }
     });
@@ -1147,7 +1493,7 @@ const Player = {
   },
   async playAt(i) {
     const it = this.list[i]; if (!it) return;
-    this.i = i; this.cur = it; const tk = ++this.tok;
+    this.i = i; this.cur = it; const tk = ++this.tok; this._altFor = null; this._alts = null; this._altNote = false;
     clearTimeout(this.ytT); if (!this._keepResume) this.resumeAt = 0; this._keepResume = false; FX.warm();
     showNow(it); markPlaying(); refreshHearts(); Lyrics.load(it);
     try {
@@ -1185,6 +1531,26 @@ const Player = {
       this.onError("Gagal memutar: " + (e && e.message ? e.message : "sumber tidak merespons"));
     }
   },
+  // Sumber utama gagal total: coba sumber alternatif untuk lagu yang sama. true = sudah ditangani (alternatif dimulai, atau
+  // lagu sudah berganti sehingga tidak perlu diapa-apakan); false = tidak ada alternatif, pemanggil melaporkan kegagalan seperti biasa.
+  async tryAlt(tk, pos = 0) {
+    const it = this.cur;
+    if (tk !== this.tok) return true;
+    if (!it || it.kind !== "yt") return false;
+    if (this._altFor !== it) { this._altFor = it; this._alts = null; }
+    if (!this._alts) {
+      status("Mencari sumber lain untuk lagu ini…");
+      try { this._alts = await findAlternatives(it); } catch { this._alts = []; }
+      if (tk !== this.tok) return true;
+    }
+    const alt = this._alts.shift();
+    if (!alt) return false;
+    this.ytRes = alt.kind === "yt" ? YtAudio.get(alt.vid) : { t: Date.now(), found: [alt.src], from: { [alt.src]: [alt.kind, null] }, pending: 0, waiters: [] };
+    this.ytTried = new Set(); this.ytCur = ""; this.ytStarted = false; this.ytEver = false; this.ytDeadline = Date.now() + 12000;
+    this.resumeAt = pos; this._altNote = true;
+    this.use("audio"); this.ytNextSrc(tk);
+    return true;
+  },
   // Putar sumber audio YouTube berikutnya yang tersedia (server tercepat lebih dulu).
   async ytNextSrc(tk = this.tok) {
     if (tk !== this.tok || !this.cur || this.cur.kind !== "yt" || !this.ytRes) return;
@@ -1199,6 +1565,7 @@ const Player = {
     if (tk !== this.tok) return;
     if (!url || late()) {
       YtAudio.drop(vid); this.ytCur = "";
+      if (await this.tryAlt(tk, this.ytEver && pos > 1 ? pos : 0)) return;
       return this.onError(this.list.length > 1 ? "Lagu ini sedang tidak bisa diputar tanpa iklan."
         : "Lagu ini sedang tidak bisa diputar tanpa iklan. Matikan “Tanpa iklan” bila ingin memutarnya lewat YouTube (ada iklan).");
     }
@@ -1219,9 +1586,12 @@ const Player = {
     const j = this.i + 1; return j < n ? j : (this.repeat === "off" ? -1 : 0);
   },
   prefetchNext() {
-    if (!this.adFree) return;
     const it = this.list[this.peekNext()];
-    if (it && it.kind === "yt" && it !== this.cur) YtAudio.get(it.vid);
+    if (!it || it === this.cur) return;
+    if (it.kind === "yt" && this.adFree) YtAudio.get(it.vid);
+    // Internet Archive: alamat file diambil lewat jaringan; siapkan sekarang agar saat layar terkunci lagu berikutnya
+    // bisa dimulai seketika, tanpa jeda yang membuat HP menidurkan halaman.
+    else if (it.kind === "archive" && !it.src && !it._pf) { it._pf = 1; archiveSrc(it.aid).then(u => { if (!it.src) it.src = u; }).catch(() => { it._pf = 0; }); }
   },
   playYtOfficial(it) {
     const start = this.resumeAt || 0; this.resumeAt = 0;
@@ -1246,6 +1616,7 @@ const Player = {
       this.ytStarted = true; this.ytEver = true; clearTimeout(this.ytT);
       const f = this.ytRes && this.ytRes.from[this.ytCur]; if (f) YtAudio.setGood(f[0], f[1]); // ingat server tercepat
     }
+    if (this._altNote) { this._altNote = false; toast("Lagu ini diputar dari sumber alternatif.", 3500); }
     this.prefetchNext(); if (this.cur && this.cur._hid) History.markOk(this.cur._hid); },
   setPlaying(on) {
     this.playing = on;
@@ -1344,7 +1715,8 @@ function wireAudio(el) {
   el.setAttribute("playsinline", ""); el.hidden = true; document.body.append(el);
   const on = () => Player.engine === "audio" && Player.audio === el;
   el.addEventListener("playing", () => on() && Player.onPlaying());
-  el.addEventListener("pause", () => on() && Player.setPlaying(false));
+  // saat lagu habis, "pause" ikut terpicu; jangan tandai berhenti agar sesi media (notifikasi/layar kunci) tetap hidup menuju lagu berikutnya
+  el.addEventListener("pause", () => on() && !el.ended && Player.setPlaying(false));
   el.addEventListener("waiting", () => on() && status("Memuat…"));
   el.addEventListener("ended", () => on() && Player.onEnded());
   el.addEventListener("error", () => {
@@ -1521,6 +1893,37 @@ const FX = {
   },
   render(msg) { this._msg = msg || ""; const [t, cls] = this.status(); const e = $("#fxStatus"); if (e) { e.textContent = t; e.className = "fx-status " + cls; } updateFxChip(); }
 };
+/* ---------------------------------------------------------------------
+   LATAR BELAKANG (layar redup / terkunci)
+   - Penjaga macet: bila aliran audio berhenti maju (mis. sinyal berpindah menara saat layar terkunci), sumber dicoba
+     lagi dari posisi terakhir (YouTube tanpa iklan: pindah ke server lain) agar lagu tidak diam selamanya.
+   - Pemutar resmi YouTube/SoundCloud (iframe) dihentikan sistem HP saat layar terkunci; itu batasan dari mereka.
+     Aplikasi memberi tahu cara agar lagu tetap jalan.
+--------------------------------------------------------------------- */
+const Stall = { last: -1, since: 0 };
+setInterval(() => {
+  const P = Player, a = P.audio;
+  if (P.engine !== "audio" || !P.playing || !a || a.paused || a.ended || !a.getAttribute("src")) { Stall.since = 0; Stall.last = -1; return; }
+  const t = a.currentTime;
+  if (t !== Stall.last || !Stall.since) { Stall.last = t; Stall.since = Date.now(); return; }
+  if (Date.now() - Stall.since < 15000) return;
+  Stall.since = Date.now();
+  if (P.cur && P.cur.kind === "yt") return P.ytNextSrc();
+  const url = a.getAttribute("src"), live = !isFinite(a.duration);
+  P.resumeAt = !live && t > 1 ? t : 0;
+  P.load(url); P.audio.play().catch(() => { });
+}, 5000);
+let hiddenIframe = false;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) hiddenIframe = Player.playing && (Player.engine === "yt" || Player.engine === "sc");
+  else if (hiddenIframe) {
+    hiddenIframe = false;
+    setTimeout(() => {
+      if (Player.playing || (Player.engine !== "yt" && Player.engine !== "sc")) return;
+      toast(Player.engine === "yt" ? "Pemutar YouTube berhenti saat layar terkunci. Nyalakan “Tanpa iklan” agar lagu tetap jalan." : "SoundCloud berhenti saat layar terkunci (dibatasi SoundCloud dan browser HP).", 6000);
+    }, 900);
+  }
+});
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) FX.guardBackground();
   else { if (FX.ctx && FX.ctx.state !== "running" && FX.active()) FX.ctx.resume().catch(() => { }); if (FX.bgSwap) { FX.bgSwap = false; FX.maybeUpgrade(); } }
@@ -1539,7 +1942,7 @@ function showNow(it) {
   $("#seek").disabled = !it || it.kind === "radio";
   document.title = it ? `${t} – ${a}` : "Live Music Player";
   if ("mediaSession" in navigator) {
-    try { navigator.mediaSession.metadata = it ? new MediaMetadata({ title: t, artist: a, artwork: art ? [{ src: art, sizes: "320x180" }] : [] }) : null; } catch { }
+    try { navigator.mediaSession.metadata = it ? new MediaMetadata({ title: t, artist: a, artwork: art ? [{ src: art, sizes: "320x180" }, { src: art.replace("mqdefault", "hqdefault"), sizes: "480x360" }] : [] }) : null; } catch { }
   }
 }
 
@@ -1600,7 +2003,7 @@ setInterval(() => {
 }, 1000);
 if ("mediaSession" in navigator) {
   const set = (n, f) => { try { navigator.mediaSession.setActionHandler(n, f); } catch { } };
-  set("play", () => Player.resume()); set("pause", () => Player.pause());
+  set("play", () => Player.resume()); set("pause", () => Player.pause()); set("stop", () => Player.pause());
   set("previoustrack", () => Player.prev()); set("nexttrack", () => Player.next());
   set("seekto", d => Player.seek(d.seekTime));
   set("seekbackward", d => { const [c] = Player.time(); Player.seek(Math.max(0, c - ((d && d.seekOffset) || 10))); });
@@ -1845,7 +2248,7 @@ function fxDraw() {
   const bars = 40, gap = 4, bw = (W - gap * (bars - 1)) / bars;
   let data = null;
   if (live) { data = new Uint8Array(FX.n.an.frequencyBinCount); FX.n.an.getByteFrequencyData(data); }
-  const grad = g.createLinearGradient(0, H, 0, 0); grad.addColorStop(0, "#E8336F"); grad.addColorStop(1, "#FFAE1F");
+  const grad = g.createLinearGradient(0, H, 0, 0); grad.addColorStop(0, "#C9A227"); grad.addColorStop(1, "#EBD283");
   for (let i = 0; i < bars; i++) {
     let v = .04;
     if (data) { // skala logaritmik: 30 Hz … 16 kHz
@@ -1853,7 +2256,7 @@ function fxDraw() {
       const a = Math.floor(f0 / ny * data.length), b = Math.max(a + 1, Math.floor(f1 / ny * data.length));
       let m = 0; for (let k = a; k < b && k < data.length; k++) m = Math.max(m, data[k]); v = Math.max(.04, m / 255);
     }
-    g.fillStyle = live ? grad : "#A39CC255";
+    g.fillStyle = live ? grad : "#A39A7855";
     const h = v * H; g.beginPath(); g.roundRect ? g.roundRect(i * (bw + gap), H - h, bw, h, 3) : g.rect(i * (bw + gap), H - h, bw, h); g.fill();
   }
   fxRaf = !$("#fxPanel").hidden ? requestAnimationFrame(fxDraw) : 0;

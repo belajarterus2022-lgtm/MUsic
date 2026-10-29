@@ -75,3 +75,24 @@ Setiap pencarian yang memberi hasil disimpan di `localStorage` browser (terpisah
 
 ## Pintasan keyboard
 Spasi: putar/jeda. Shift + →/←: lagu berikutnya/sebelumnya.
+
+## Perubahan terbaru
+- **Tampilan.** Satu warna utama oranye cerah; variasi lewat tingkat terang-gelap warna itu dan tinta navy (kapsul pemutar, pita menu Radio/Lokal, panel "Sedang diputar"). Tema terang dan gelap tetap ada.
+- **Pencarian lebih akurat.** Kata kunci dicocokkan per kata utuh ("dewa" tidak lagi cocok dengan "dewasa", "7" tidak cocok dengan "17"). Video kumpulan (album penuh, nonstop, playlist, lebih dari 20 menit) dibuang kecuali memang dicari. Peringkat: rilis resmi dan durasi lagu wajar lebih atas, versi live dan video sangat panjang lebih bawah. Kata pengisi ("lagu", "terbaru", "kpop") dibuang dari kata kunci yang dikirim ke YouTube, tetapi tetap dipakai untuk riwayat. Pencarian Internet Archive mewajibkan semua kata dan aman dari karakter khusus.
+- **Layar redup/terkunci.** Lagu berikutnya dari Internet Archive disiapkan lebih dulu (seperti YouTube tanpa iklan) agar tidak ada jeda yang membuat HP menidurkan halaman. Sesi media tidak lagi ditandai "berhenti" di sela dua lagu. Penjaga macet: bila aliran audio berhenti maju 15 detik (mis. sinyal berpindah menara), sumber dicoba lagi dari posisi terakhir. Bila pemutar resmi YouTube/SoundCloud berhenti saat layar terkunci, muncul petunjuk untuk menyalakan "Tanpa iklan". Batasan itu berasal dari YouTube/SoundCloud, bukan dari aplikasi.
+- **Sumber alternatif.** Bila sebuah lagu gagal total (semua server audio gagal, atau pemutar resmi menolak), aplikasi mencari unggahan YouTube lain dari lagu yang sama (artis dan judul harus cocok, durasi mirip), lalu versi Audius. Hanya berjalan setelah sumber utama gagal, jadi lagu yang sudah bisa diputar tidak terpengaruh.
+
+## Pencarian cepat, tombol X, dan pencarian suara
+
+- **Lebih responsif**: hasil tampil begitu satu sumber selesai (tidak menunggu yang paling lambat); server YouTube publik (Piped/Invidious) dicoba bertahap-paralel, dan kelompok server yang mati dilewati 2 menit; saran ketik lebih cepat (jeda 140 ms + cache).
+- **Tombol X** (bulat kecil di dalam kolom cari) menghapus kata kunci sekali klik dan kembali ke beranda pencarian.
+- **Voice Search**: ikon mikrofon di kolom cari (dan tombol "Cari dengan suara" di beranda pencarian). Memakai Web Speech API bawaan browser (Chrome, Edge, Safari), bahasa Indonesia/English bisa dipilih. Kata perintah seperti "cari", "putarkan", "mainkan" dibuang otomatis; bila tidak ada hasil, kemungkinan ucapan lain dicoba.
+- Syarat: alamat `https://` atau `localhost`, dan izin mikrofon. Di iPhone mode aplikasi layar utama (PWA), pengenalan suara dibatasi iOS; gunakan tombol mikrofon pada keyboard.
+
+## Tampilan emas, layout lebar, dan halaman Jelajah
+
+- **Tema**: satu warna emas (kuning elegan) dengan tinta gelap hangat; tidak ada warna kedua. Tema cerah dan gelap sama-sama emas.
+- **Layout lebar**: lebar maksimum 1840 px; di desktop daftar lagu tampil 2 kolom atau lebih, kartu dan gambar lebih besar. HP tetap satu kolom.
+- **15 lagu dulu**: hasil pencarian menampilkan 15 lagu, lalu tombol panah bawah ("Tampilkan semua N lagu") membuka sisanya dan panah atas menutupnya lagi. Setiap lagu menampilkan gambar sampul.
+- **Jelajah**: halaman Album, Band, K-Pop, Dangdut, Pop, Rock, dan Indie. Gambar kartu dari katalog iTunes (disimpan di perangkat 30 hari). Ketuk artis untuk mencari lagunya; ketuk album untuk daftar lagunya. Daftar artis/album ada di `BROWSE_CATS` pada `app.js` dan bebas diubah.
+- **Ikon tab browser** berputar seperti piringan hitam emas (tidak aktif di HP dan bila pengguna memilih "kurangi gerakan").
